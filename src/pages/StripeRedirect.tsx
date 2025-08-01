@@ -16,9 +16,15 @@ const StripeRedirect: React.FC = () => {
 
   const handleStripeCheckout = () => {
     if (stripeCheckoutUrl) {
-      window.location.href = stripeCheckoutUrl;
+      // Open Stripe checkout in a new tab to avoid iframe issues
+      const newWindow = window.open(stripeCheckoutUrl, '_blank', 'noopener,noreferrer');
+      if (!newWindow) {
+        // Fallback if popup is blocked
+        window.location.href = stripeCheckoutUrl;
+      }
     } else {
       console.error('Stripe checkout URL not configured');
+      alert('Stripe checkout is not properly configured. Please contact support.');
     }
   };
 
