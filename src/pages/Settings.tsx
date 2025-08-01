@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, User, Lock, CreditCard, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { ArrowLeft, User, Lock, CreditCard, AlertCircle, CheckCircle, Loader, LogOut } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 const Settings: React.FC = () => {

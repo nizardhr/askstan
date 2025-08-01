@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Loader } from 'lucide-react';
 
@@ -13,6 +13,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requireSubscription = false 
 }) => {
   const { user, loading, hasActiveSubscription } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -26,11 +27,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
   if (requireSubscription && !hasActiveSubscription()) {
-    return <Navigate to="/subscribe" replace />;
+    return <Navigate to="/subscribe" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;

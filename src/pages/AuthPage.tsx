@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Mail, ArrowLeft, Loader, AlertCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -11,7 +11,11 @@ const AuthPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn, signUp } = useAuth();
+
+  // Get the page user was trying to access before being redirected to auth
+  const from = location.state?.from?.pathname || '/dashboard';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,8 +38,8 @@ const AuthPage: React.FC = () => {
       } else {
         // Login
         await signIn(email, password);
-        // After successful login, redirect to dashboard
-        navigate('/dashboard');
+        // After successful login, redirect to where user was trying to go
+        navigate(from, { replace: true });
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred');

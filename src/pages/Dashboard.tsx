@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, User, Settings, Send, MessageCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 const Dashboard: React.FC = () => {
   const { signOut, user, profile } = useAuth();
+  const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [scriptError, setScriptError] = useState(false);
@@ -13,8 +14,13 @@ const Dashboard: React.FC = () => {
     { id: 1, text: "Hello! I'm Stan, your AI assistant. How can I help you today?", sender: 'bot', timestamp: new Date() }
   ]);
 
-  const handleLogout = () => {
-    signOut();
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/', { replace: true });
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
