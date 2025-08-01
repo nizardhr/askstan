@@ -56,15 +56,26 @@ export const useAuth = () => {
       setProfile(profileData);
 
       // Fetch subscription
-      const { data: subscriptionData } = await supabase
+      const { data: subscriptionData, error: subscriptionError } = await supabase
         .from('subscriptions')
         .select('*')
-        .eq('user_id', userId)
-        .single();
+        .eq('user_id', userId);
 
-      setSubscription(subscriptionData);
+      // Handle subscription data - could be empty array, single item, or multiple items
+      if (subscriptionError) {
+        console.log('No subscription found for user:', subscriptionError);
+        setSubscription(null);
+      } else if (subscriptionData && subscriptionData.length > 0) {
+        // Get the most recent active subscription
+        const activeSubscription = subscriptionData.find(sub => sub.status === 'active') || subscriptionData[0];
+        setSubscription(activeSubscription);
+      } else {
+        setSubscription(null);
+      }
     } catch (error) {
       console.error('Error fetching user data:', error);
+      setProfile(null);
+      setSubscription(null);
     }
   };
 
