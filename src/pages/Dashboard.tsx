@@ -11,7 +11,7 @@ const Dashboard: React.FC = () => {
   const [scriptError, setScriptError] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([
-    { id: 1, text: "Hello! I'm Stan, your AI assistant. How can I help you today?", sender: 'bot', timestamp: new Date() }
+    { id: 1, text: "Hello! I'm Stan, your personal AI assistant. How can I help you today?", sender: 'bot', timestamp: new Date() }
   ]);
 
   const handleLogout = async () => {
@@ -50,10 +50,16 @@ const Dashboard: React.FC = () => {
     }, 1000);
   };
   useEffect(() => {
-    // Load external chatbot embed script
+    // Load external chatbot embed script - ONLY on Dashboard for authenticated users
     console.log('Loading chatbot embed script for ID: fc3ec544-4f73-4a5d-94b9-356b6a953d2e');
     console.log('Full embed URL: https://yvexanchatbots.netlify.app/embed/fc3ec544-4f73-4a5d-94b9-356b6a953d2e.js');
     
+    // Ensure we only load the chatbot for authenticated users
+    if (!user) {
+      console.log('User not authenticated, skipping chatbot load');
+      return;
+    }
+
     const script = document.createElement('script');
     script.src = 'https://yvexanchatbots.netlify.app/embed/fc3ec544-4f73-4a5d-94b9-356b6a953d2e.js';
     script.async = true;
@@ -81,7 +87,7 @@ const Dashboard: React.FC = () => {
         document.head.removeChild(existingScript);
       }
     };
-  }, []);
+  }, [user]);
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top Navigation Bar */}

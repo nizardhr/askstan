@@ -30,7 +30,7 @@ const Header: React.FC = () => {
               to="/auth"
               className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-2 rounded-full font-semibold hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
             >
-              Start Now
+              Get Started
             </Link>
           </nav>
 
@@ -62,7 +62,7 @@ const Header: React.FC = () => {
                 to="/auth"
                 className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-2 rounded-full font-semibold text-center hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
               >
-                Start Now
+                Get Started
               </Link>
             </nav>
           </div>
