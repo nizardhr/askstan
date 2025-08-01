@@ -78,7 +78,7 @@ const StripeRedirect: React.FC = () => {
         <div className="bg-gradient-to-r from-blue-50 to-amber-50 rounded-lg p-6 mb-8">
           <h3 className="text-lg font-semibold text-blue-900 mb-2">AskStan Pro</h3>
           <div className="text-center">
-            <span className="text-3xl font-bold text-blue-900">$29</span>
+            <span className="text-3xl font-bold text-blue-900">$4.99</span>
             <span className="text-gray-600">/month</span>
           </div>
           <ul className="mt-4 space-y-2 text-sm text-gray-700">
