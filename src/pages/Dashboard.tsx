@@ -44,36 +44,12 @@ const Dashboard: React.FC = () => {
     }, 1000);
   };
   useEffect(() => {
-    // Load the AskStan chatbot embed script
-    console.log('Loading chatbot embed script for ID: fc3ec544-4f73-4a5d-94b9-356b6a953d2e');
-    console.log('Full embed URL: https://yvexanchatbots.netlify.app/embed/fc3ec544-4f73-4a5d-94b9-356b6a953d2e.js');
-    const script = document.createElement('script');
-    script.src = 'https://yvexanchatbots.netlify.app/embed/fc3ec544-4f73-4a5d-94b9-356b6a953d2e.js';
-    script.async = true;
-    script.crossOrigin = 'anonymous';
-    
-    // Add error handling and success logging
-    script.onload = () => {
-      console.log('AskStan chatbot script loaded successfully');
-      console.log('Chatbot embed script loaded successfully');
-      setScriptLoaded(true);
-    };
-    
-    script.onerror = (error) => {
-      console.error('Failed to load chatbot embed script:', error);
-      console.log('Script URL:', script.src);
-      setScriptError(true);
-    };
-    
-    document.head.appendChild(script);
+    // Simulate loading for demo purposes
+    const timer = setTimeout(() => {
+      setScriptError(true); // Use fallback chat interface
+    }, 2000);
 
-    // Cleanup function to remove script when component unmounts
-    return () => {
-      const existingScript = document.querySelector(`script[src="${script.src}"]`);
-      if (existingScript) {
-        document.head.removeChild(existingScript);
-      }
-    };
+    return () => clearTimeout(timer);
   }, []);
   return (
     <div className="min-h-screen bg-gray-50">
