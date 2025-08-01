@@ -44,12 +44,37 @@ const Dashboard: React.FC = () => {
     }, 1000);
   };
   useEffect(() => {
-    // Simulate loading for demo purposes
-    const timer = setTimeout(() => {
-      setScriptError(true); // Use fallback chat interface
-    }, 2000);
+    // Load external chatbot embed script
+    console.log('Loading chatbot embed script for ID: fc3ec544-4f73-4a5d-94b9-356b6a953d2e');
+    console.log('Full embed URL: https://yvexanchatbots.netlify.app/embed/fc3ec544-4f73-4a5d-94b9-356b6a953d2e.js');
+    
+    const script = document.createElement('script');
+    script.src = 'https://yvexanchatbots.netlify.app/embed/fc3ec544-4f73-4a5d-94b9-356b6a953d2e.js';
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    
+    script.onload = function() {
+      console.log('Chatbot embed script loaded successfully');
+      setScriptLoaded(true);
+      setScriptError(false);
+    };
+    
+    script.onerror = function(error) {
+      console.error('Failed to load chatbot embed script:', error);
+      console.log('Script URL:', script.src);
+      setScriptError(true);
+      setScriptLoaded(false);
+    };
+    
+    document.head.appendChild(script);
 
-    return () => clearTimeout(timer);
+    // Cleanup function to remove script when component unmounts
+    return () => {
+      const existingScript = document.querySelector(`script[src="${script.src}"]`);
+      if (existingScript) {
+        document.head.removeChild(existingScript);
+      }
+    };
   }, []);
   return (
     <div className="min-h-screen bg-gray-50">
@@ -117,9 +142,22 @@ const Dashboard: React.FC = () => {
 
           {/* Chatbot Container - This is where the external embed will be injected */}
           <div 
+            id="askstan-chatbot-container"
             className="flex-1 bg-gradient-to-br from-blue-50 to-amber-50 p-4"
           >
-            {scriptError ? (
+            {!scriptLoaded && !scriptError ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading AskStan chatbot...</p>
+                  <p className="text-sm text-gray-500 mt-2">Connecting to chatbot service...</p>
+                </div>
+              </div>
+            ) : scriptLoaded ? (
+              <div id="askstan-chatbot" className="h-full">
+                {/* External chatbot will be injected here */}
+              </div>
+            ) : (
               <div className="h-full flex flex-col">
                 {/* Fallback Chat Interface */}
                 <div className="flex-1 overflow-y-auto mb-4 space-y-4">
@@ -182,18 +220,6 @@ const Dashboard: React.FC = () => {
                     </p>
                   </div>
                 </div>
-              </div>
-            ) : !scriptLoaded ? (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-600">Loading AskStan chatbot...</p>
-                  <p className="text-sm text-gray-500 mt-2">Connecting to chatbot service...</p>
-                </div>
-              </div>
-            ) : (
-              <div id="askstan-chatbot" className="h-full">
-                {/* Chatbot will be injected here */}
               </div>
             )}
           </div>
