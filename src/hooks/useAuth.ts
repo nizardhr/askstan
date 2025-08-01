@@ -105,11 +105,12 @@ export const useAuth = () => {
   };
 
   const updatePassword = async (newPassword: string) => {
-    const { error } = await supabase.auth.updateUser({
+    const { data, error } = await supabase.auth.updateUser({
       password: newPassword,
     });
 
     if (error) throw error;
+    return data;
   };
 
   const hasActiveSubscription = () => {

@@ -25,13 +25,15 @@ const Settings: React.FC = () => {
         throw new Error('Password must be at least 6 characters');
       }
 
-      await updatePassword(newPassword);
+      const result = await updatePassword(newPassword);
+      console.log('Password update result:', result);
       setMessage('Password updated successfully');
       setMessageType('success');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
+      console.error('Password update error:', err);
       setMessage(err.message || 'Failed to update password');
       setMessageType('error');
     } finally {
