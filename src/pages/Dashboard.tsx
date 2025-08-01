@@ -69,6 +69,16 @@ const Dashboard: React.FC = () => {
       console.log('Chatbot embed script loaded successfully');
       setScriptLoaded(true);
       setScriptError(false);
+      
+      // Check if chatbot actually initialized after 3 seconds
+      setTimeout(() => {
+        const chatbotContainer = document.getElementById('askstan-chatbot');
+        if (!chatbotContainer || chatbotContainer.children.length === 0) {
+          console.log('Chatbot failed to initialize, falling back to local interface');
+          setScriptError(true);
+          setScriptLoaded(false);
+        }
+      }, 3000);
     };
     
     script.onerror = function(error) {
