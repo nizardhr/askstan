@@ -11,7 +11,7 @@ const Dashboard: React.FC = () => {
   const [chatbotError, setChatbotError] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([
-    { id: 1, text: "Hello! I'm Stan, your personal AI assistant. How can I help you today?", sender: 'bot', timestamp: new Date() }
+    { id: 1, text: "Hello! I'm Stan, your personal AI assistant powered by Yvexan Agency. How can I help you today?", sender: 'bot', timestamp: new Date() }
   ]);
 
   const handleLogout = async () => {
@@ -42,7 +42,7 @@ const Dashboard: React.FC = () => {
     setTimeout(() => {
       const botResponse = {
         id: messages.length + 2,
-        text: "I'm currently running in fallback mode. The full AskStan chatbot service will be available once the external service is restored. In the meantime, I can provide basic assistance.",
+        text: "I'm currently running in fallback mode. The full AskStan chatbot service by Yvexan Agency will be available once the service is restored. In the meantime, I can provide basic assistance.",
         sender: 'bot' as const,
         timestamp: new Date()
       };
@@ -50,25 +50,25 @@ const Dashboard: React.FC = () => {
     }, 1000);
   };
   useEffect(() => {
-    // Load Voiceflow chatbot - ONLY on Dashboard for authenticated users
-    console.log('Loading Voiceflow chatbot for project ID: 688d150bdb7293eb99bdbe16');
+    // Load AskStan chatbot - ONLY on Dashboard for authenticated users
+    console.log('Loading AskStan chatbot powered by Yvexan Agency');
     
     // Ensure we only load the chatbot for authenticated users
     if (!user) {
-      console.log('User not authenticated, skipping Voiceflow chatbot load');
+      console.log('User not authenticated, skipping chatbot load');
       return;
     }
 
-    // Voiceflow chatbot embed implementation
-    const loadVoiceflowChatbot = () => {
+    // AskStan chatbot embed implementation
+    const loadAskStanChatbot = () => {
       const script = document.createElement('script');
       script.src = 'https://cdn.voiceflow.com/widget-next/bundle.mjs';
       script.type = 'text/javascript';
       
       script.onload = function() {
-        console.log('Voiceflow script loaded successfully');
+        console.log('AskStan chatbot script loaded successfully');
         try {
-          // Initialize Voiceflow chatbot
+          // Initialize AskStan chatbot
           (window as any).voiceflow.chat.load({
             verify: { 
               projectID: '688d150bdb7293eb99bdbe16' 
@@ -82,14 +82,14 @@ const Dashboard: React.FC = () => {
           setChatbotLoaded(true);
           setChatbotError(false);
         } catch (error) {
-          console.error('Error initializing Voiceflow chatbot:', error);
+          console.error('Error initializing AskStan chatbot:', error);
           setChatbotError(true);
           setChatbotLoaded(false);
         }
       };
       
       script.onerror = function(error) {
-        console.error('Failed to load Voiceflow script:', error);
+        console.error('Failed to load AskStan chatbot script:', error);
         setChatbotError(true);
         setChatbotLoaded(false);
       };
@@ -103,7 +103,7 @@ const Dashboard: React.FC = () => {
       }
     };
     
-    loadVoiceflowChatbot();
+    loadAskStanChatbot();
 
     // Cleanup function to remove script when component unmounts
     return () => {
@@ -111,7 +111,7 @@ const Dashboard: React.FC = () => {
       if (existingScript) {
         existingScript.remove();
       }
-      // Clean up Voiceflow instance if it exists
+      // Clean up chatbot instance if it exists
       if ((window as any).voiceflow?.chat?.destroy) {
         (window as any).voiceflow.chat.destroy();
       }
@@ -179,29 +179,29 @@ const Dashboard: React.FC = () => {
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">Chat with Stan</h3>
             <p className="text-sm text-gray-500">
-              {chatbotLoaded ? 'Powered by Voiceflow' : 'Ask anything, get personalized answers instantly'}
+              {chatbotLoaded ? 'Powered by Yvexan Agency' : 'Ask anything, get personalized answers instantly'}
             </p>
           </div>
 
-          {/* Voiceflow Chatbot Container */}
+          {/* AskStan Chatbot Container */}
           <div 
-            id="voiceflow-chat"
+            id="askstan-chat"
             className="flex-1 bg-gradient-to-br from-blue-50 to-amber-50 p-4"
           >
             {!chatbotLoaded && !chatbotError ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
                   <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-600">Loading Voiceflow chatbot...</p>
-                  <p className="text-sm text-gray-500 mt-2">Connecting to Voiceflow service...</p>
+                  <p className="text-gray-600">Loading AskStan chatbot...</p>
+                  <p className="text-sm text-gray-500 mt-2">Connecting to Yvexan Agency service...</p>
                 </div>
               </div>
             ) : chatbotLoaded ? (
               <div id="askstan-chatbot" className="h-full">
-                {/* Voiceflow chatbot widget will appear here */}
+                {/* AskStan chatbot widget will appear here */}
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center">
-                    <p className="text-gray-600">Voiceflow chatbot is ready!</p>
+                    <p className="text-gray-600">AskStan chatbot is ready!</p>
                     <p className="text-sm text-gray-500 mt-2">The chat widget should appear on your screen.</p>
                   </div>
                 </div>
@@ -259,7 +259,7 @@ const Dashboard: React.FC = () => {
                   <div className="flex items-center">
                     <div className="w-2 h-2 bg-amber-500 rounded-full mr-2"></div>
                     <p className="text-sm text-amber-800">
-                      <strong>Fallback Mode:</strong> Voiceflow chatbot service temporarily unavailable. 
+                      <strong>Fallback Mode:</strong> AskStan chatbot service temporarily unavailable. 
                       <button 
                         onClick={() => window.location.reload()} 
                         className="ml-2 text-blue-600 hover:text-blue-800 underline"
