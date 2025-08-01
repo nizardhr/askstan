@@ -7,8 +7,8 @@ const Dashboard: React.FC = () => {
   const { signOut, user, profile } = useAuth();
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
-  const [scriptLoaded, setScriptLoaded] = useState(false);
-  const [scriptError, setScriptError] = useState(false);
+  const [chatbotLoaded, setChatbotLoaded] = useState(false);
+  const [chatbotError, setChatbotError] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([
     { id: 1, text: "Hello! I'm Stan, your personal AI assistant. How can I help you today?", sender: 'bot', timestamp: new Date() }
@@ -50,51 +50,70 @@ const Dashboard: React.FC = () => {
     }, 1000);
   };
   useEffect(() => {
-    // Load external chatbot embed script - ONLY on Dashboard for authenticated users
-    console.log('Loading chatbot embed script for ID: fc3ec544-4f73-4a5d-94b9-356b6a953d2e');
-    console.log('Full embed URL: https://yvexanchatbots.netlify.app/embed/fc3ec544-4f73-4a5d-94b9-356b6a953d2e.js');
+    // Load Voiceflow chatbot - ONLY on Dashboard for authenticated users
+    console.log('Loading Voiceflow chatbot for project ID: 688d150bdb7293eb99bdbe16');
     
     // Ensure we only load the chatbot for authenticated users
     if (!user) {
-      console.log('User not authenticated, skipping chatbot load');
+      console.log('User not authenticated, skipping Voiceflow chatbot load');
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = 'https://yvexanchatbots.netlify.app/embed/fc3ec544-4f73-4a5d-94b9-356b6a953d2e.js';
-    script.async = true;
-    script.crossOrigin = 'anonymous';
-    
-    script.onload = function() {
-      console.log('Chatbot embed script loaded successfully');
-      setScriptLoaded(true);
-      setScriptError(false);
+    // Voiceflow chatbot embed implementation
+    const loadVoiceflowChatbot = () => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.voiceflow.com/widget-next/bundle.mjs';
+      script.type = 'text/javascript';
       
-      // Check if chatbot actually initialized after 3 seconds
-      setTimeout(() => {
-        const chatbotContainer = document.getElementById('askstan-chatbot');
-        if (!chatbotContainer || chatbotContainer.children.length === 0) {
-          console.log('Chatbot failed to initialize, falling back to local interface');
-          setScriptError(true);
-          setScriptLoaded(false);
+      script.onload = function() {
+        console.log('Voiceflow script loaded successfully');
+        try {
+          // Initialize Voiceflow chatbot
+          (window as any).voiceflow.chat.load({
+            verify: { 
+              projectID: '688d150bdb7293eb99bdbe16' 
+            },
+            url: 'https://general-runtime.voiceflow.com',
+            versionID: 'production',
+            voice: { 
+              url: "https://runtime-api.voiceflow.com" 
+            }
+          });
+          setChatbotLoaded(true);
+          setChatbotError(false);
+        } catch (error) {
+          console.error('Error initializing Voiceflow chatbot:', error);
+          setChatbotError(true);
+          setChatbotLoaded(false);
         }
-      }, 3000);
+      };
+      
+      script.onerror = function(error) {
+        console.error('Failed to load Voiceflow script:', error);
+        setChatbotError(true);
+        setChatbotLoaded(false);
+      };
+      
+      // Insert script into document
+      const firstScript = document.getElementsByTagName('script')[0];
+      if (firstScript && firstScript.parentNode) {
+        firstScript.parentNode.insertBefore(script, firstScript);
+      } else {
+        document.head.appendChild(script);
+      }
     };
     
-    script.onerror = function(error) {
-      console.error('Failed to load chatbot embed script:', error);
-      console.log('Script URL:', script.src);
-      setScriptError(true);
-      setScriptLoaded(false);
-    };
-    
-    document.head.appendChild(script);
+    loadVoiceflowChatbot();
 
     // Cleanup function to remove script when component unmounts
     return () => {
-      const existingScript = document.querySelector(`script[src="${script.src}"]`);
+      const existingScript = document.querySelector('script[src="https://cdn.voiceflow.com/widget-next/bundle.mjs"]');
       if (existingScript) {
-        document.head.removeChild(existingScript);
+        existingScript.remove();
+      }
+      // Clean up Voiceflow instance if it exists
+      if ((window as any).voiceflow?.chat?.destroy) {
+        (window as any).voiceflow.chat.destroy();
       }
     };
   }, [user]);
@@ -159,27 +178,35 @@ const Dashboard: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 h-[600px] flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">Chat with Stan</h3>
-            <p className="text-sm text-gray-500">Ask anything, get personalized answers instantly</p>
+            <p className="text-sm text-gray-500">
+              {chatbotLoaded ? 'Powered by Voiceflow' : 'Ask anything, get personalized answers instantly'}
+            </p>
           </div>
 
-          {/* Chatbot Container - This is where the external embed will be injected */}
+          {/* Voiceflow Chatbot Container */}
           <div 
-            id="askstan-chatbot-container"
+            id="voiceflow-chat"
             className="flex-1 bg-gradient-to-br from-blue-50 to-amber-50 p-4"
           >
-            {!scriptLoaded && !scriptError ? (
+            {!chatbotLoaded && !chatbotError ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
                   <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-600">Loading AskStan chatbot...</p>
-                  <p className="text-sm text-gray-500 mt-2">Connecting to chatbot service...</p>
+                  <p className="text-gray-600">Loading Voiceflow chatbot...</p>
+                  <p className="text-sm text-gray-500 mt-2">Connecting to Voiceflow service...</p>
                 </div>
               </div>
-            ) : scriptLoaded ? (
+            ) : chatbotLoaded ? (
               <div id="askstan-chatbot" className="h-full">
-                {/* External chatbot will be injected here */}
+                {/* Voiceflow chatbot widget will appear here */}
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-gray-600">Voiceflow chatbot is ready!</p>
+                    <p className="text-sm text-gray-500 mt-2">The chat widget should appear on your screen.</p>
+                  </div>
+                </div>
               </div>
-            ) : (
+            ) : chatbotError ? (
               <div className="h-full flex flex-col">
                 {/* Fallback Chat Interface */}
                 <div className="flex-1 overflow-y-auto mb-4 space-y-4">
@@ -232,7 +259,7 @@ const Dashboard: React.FC = () => {
                   <div className="flex items-center">
                     <div className="w-2 h-2 bg-amber-500 rounded-full mr-2"></div>
                     <p className="text-sm text-amber-800">
-                      <strong>Fallback Mode:</strong> External chatbot service temporarily unavailable. 
+                      <strong>Fallback Mode:</strong> Voiceflow chatbot service temporarily unavailable. 
                       <button 
                         onClick={() => window.location.reload()} 
                         className="ml-2 text-blue-600 hover:text-blue-800 underline"
@@ -243,7 +270,7 @@ const Dashboard: React.FC = () => {
                   </div>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
