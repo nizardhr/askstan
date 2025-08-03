@@ -1,0 +1,40 @@
+@@ .. @@
+ GRANT EXECUTE ON FUNCTION get_user_stats(uuid) TO authenticated;
+ 
+--- Create views for easier data access
+-CREATE OR REPLACE VIEW user_subscription_details AS
+-SELECT 
+-  up.id,
+-  up.email,
+-  up.full_name,
+-  up.created_at as user_created_at,
+-  us.id as subscription_id,
+-  us.stripe_customer_id,
+-  us.stripe_subscription_id,
+-  us.status as subscription_status,
+-  us.plan_type,
+-  us.current_period_start,
+-  us.current_period_end,
+-  us.cancel_at_period_end,
+-  us.trial_end,
+-  CASE 
+-    WHEN us.status IN ('active', 'trialing') AND (us.current_period_end IS NULL OR us.current_period_end > now()) 
+-    THEN true 
+-    ELSE false 
+-  END as has_active_subscription
+-FROM user_profiles up
+-LEFT JOIN user_subscriptions us ON up.id = us.user_id
+-  AND us.status IN ('active', 'trialing', 'past_due', 'canceled');
+-
+--- Grant access to the view
+-GRANT SELECT ON user_subscription_details TO authenticated;
+-GRANT SELECT ON user_subscription_details TO service_role;
+-
+--- Create RLS policy for the view
+-CREATE POLICY "Users can read own subscription details"
+-  ON user_subscription_details
+-  FOR SELECT
+-  TO authenticated
+-  USING (id = auth.uid());
+-
+ -- Insert default data for testing (optional)
