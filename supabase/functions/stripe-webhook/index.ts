@@ -39,26 +39,72 @@ serve(async (req) => {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
         
-        if (session.customer && session.subscription) {
-          // Find user by customer email
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('email', session.customer_details?.email)
-            .single()
+        if (session.customer && session.subscription && session.metadata?.userId) {
+          const userId = session.metadata.userId
+          const planType = session.metadata.planType || 'monthly'
 
-          if (profiles) {
-            // Create or update subscription
-            await supabase
-              .from('subscriptions')
-              .upsert({
-                user_id: profiles.id,
-                stripe_customer_id: session.customer as string,
-                stripe_subscription_id: session.subscription as string,
-                status: 'active',
-                current_period_start: new Date().toISOString(),
-                current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
-              })
+          // Create or update subscription
+          const { error } = await supabase
+            .from('subscriptions')
+            .upsert({
+              user_id: userId,
+              stripe_customer_id: session.customer as string,
+              stripe_subscription_id: session.subscription as string,
+              status: 'active',
+              plan_type: planType,
+              current_period_start: new Date().toISOString(),
+              current_period_end: new Date(Date.now() + (planType === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString(),
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'user_id'
+            })
+
+          if (error) {
+            console.error('Error updating subscription:', error)
+          } else {
+            console.log('Subscription activated for user:', userId)
+          }
+        }
+        break
+      }
+
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice
+        
+        if (invoice.subscription) {
+          const { error } = await supabase
+            .from('subscriptions')
+            .update({
+              status: 'active',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('stripe_subscription_id', invoice.subscription as string)
+
+          if (error) {
+            console.error('Error updating subscription on payment:', error)
+          } else {
+            console.log('Subscription renewed:', invoice.subscription)
+          }
+        }
+        break
+      }
+
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object as Stripe.Invoice
+        
+        if (invoice.subscription) {
+          const { error } = await supabase
+            .from('subscriptions')
+            .update({
+              status: 'past_due',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('stripe_subscription_id', invoice.subscription as string)
+
+          if (error) {
+            console.error('Error updating subscription on payment failure:', error)
+          } else {
+            console.log('Subscription marked as past due:', invoice.subscription)
           }
         }
         break
@@ -67,39 +113,43 @@ serve(async (req) => {
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription
         
-        await supabase
+        const status = subscription.status === 'active' ? 'active' : 
+                      subscription.status === 'past_due' ? 'past_due' :
+                      subscription.status === 'canceled' ? 'canceled' : 'inactive'
+
+        const { error } = await supabase
           .from('subscriptions')
           .update({
-            status: subscription.status === 'active' ? 'active' : 'inactive',
+            status: status,
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            updated_at: new Date().toISOString(),
           })
           .eq('stripe_subscription_id', subscription.id)
+
+        if (error) {
+          console.error('Error updating subscription:', error)
+        } else {
+          console.log('Subscription updated:', subscription.id, 'Status:', status)
+        }
         break
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
         
-        await supabase
+        const { error } = await supabase
           .from('subscriptions')
           .update({
             status: 'canceled',
+            updated_at: new Date().toISOString(),
           })
           .eq('stripe_subscription_id', subscription.id)
-        break
-      }
 
-      case 'invoice.payment_failed': {
-        const invoice = event.data.object as Stripe.Invoice
-        
-        if (invoice.subscription) {
-          await supabase
-            .from('subscriptions')
-            .update({
-              status: 'past_due',
-            })
-            .eq('stripe_subscription_id', invoice.subscription as string)
+        if (error) {
+          console.error('Error canceling subscription:', error)
+        } else {
+          console.log('Subscription canceled:', subscription.id)
         }
         break
       }

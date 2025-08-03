@@ -3,7 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
-import StripeRedirect from './pages/StripeRedirect';
+import PlanSelection from './pages/PlanSelection';
+import PaymentRequired from './pages/PaymentRequired';
 import Settings from './pages/Settings';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -18,7 +19,15 @@ function App() {
             path="/subscribe" 
             element={
               <ProtectedRoute>
-                <StripeRedirect />
+                <PlanSelection />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/payment-required" 
+            element={
+              <ProtectedRoute>
+                <PaymentRequired />
               </ProtectedRoute>
             } 
           />

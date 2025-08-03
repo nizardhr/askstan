@@ -21,7 +21,8 @@ export type Subscription = {
   user_id: string;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
-  status: 'active' | 'inactive' | 'canceled' | 'past_due' | 'unpaid';
+  status: 'active' | 'inactive' | 'canceled' | 'past_due' | 'unpaid' | 'trialing' | 'incomplete' | 'incomplete_expired';
+  plan_type: 'monthly' | 'yearly' | null;
   current_period_start: string | null;
   current_period_end: string | null;
   created_at: string;

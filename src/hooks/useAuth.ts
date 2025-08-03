@@ -114,7 +114,7 @@ export const useAuth = () => {
   };
 
   const hasActiveSubscription = () => {
-    return subscription?.status === 'active';
+    return subscription?.status === 'active' || subscription?.status === 'trialing';
   };
 
   return {

@@ -31,7 +31,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (requireSubscription && !hasActiveSubscription()) {
-    return <Navigate to="/subscribe" state={{ from: location }} replace />;
+    return <Navigate to="/payment-required" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;

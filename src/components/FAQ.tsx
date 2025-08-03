@@ -3,28 +3,28 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const faqs = [
   {
-    question: 'How does AskStan work?',
-    answer: 'AskStan uses advanced AI technology to understand your questions and provide personalized, accurate responses. Simply type your question and get instant, intelligent answers tailored to your needs.',
+    question: 'How does AskStan help me grow on social media?',
+    answer: 'AskStan is your real-time social media growth coach, specifically designed to help you build a dynamic and profitable social media business. We provide personalized strategies for LinkedIn, X (Twitter), Instagram, Threads, and other platforms, focusing on daily posting and engagement as your growth engine.',
   },
   {
-    question: 'What makes AskStan different from other AI assistants?',
-    answer: 'AskStan focuses on personalization, learning from your interactions to provide increasingly relevant responses. We prioritize privacy, speed, and accuracy in every conversation.',
+    question: 'What social media platforms does AskStan support?',
+    answer: 'AskStan specializes in LinkedIn, X (Twitter), Instagram, Threads, and other major social platforms. We provide platform-specific strategies, content ideas, engagement tactics, and growth hacks tailored to each platform\'s unique algorithm and audience behavior.',
   },
   {
-    question: 'Is my data secure with AskStan?',
-    answer: 'Absolutely. We use enterprise-grade encryption and follow strict privacy protocols. Your conversations are private and secure, and we never share your personal information.',
+    question: 'How quickly can I see results with AskStan?',
+    answer: 'Many users see engagement improvements within the first week of implementing AskStan\'s daily posting and engagement strategies. Our AI coach provides real-time feedback and adjustments to optimize your content performance and audience growth continuously.',
   },
   {
-    question: 'Can I cancel my subscription anytime?',
-    answer: 'Yes, you can cancel your subscription at any time. There are no long-term commitments, and you\'ll continue to have access until the end of your current billing period.',
+    question: 'What kind of content strategies does AskStan provide?',
+    answer: 'AskStan helps you create viral-worthy content, optimize posting times, craft engaging captions, develop your personal brand voice, and build authentic engagement. We focus on turning your social media presence into a profitable business through strategic daily actions.',
   },
   {
-    question: 'What kind of questions can I ask AskStan?',
-    answer: 'You can ask AskStan almost anything! From general knowledge and advice to specific technical questions, creative writing help, and problem-solving assistance.',
+    question: 'Can AskStan help me monetize my social media following?',
+    answer: 'Absolutely! AskStan provides strategies for turning your social media presence into revenue streams through content monetization, brand partnerships, product launches, and audience building techniques that convert followers into customers.',
   },
   {
-    question: 'Is there a free trial available?',
-    answer: 'We offer a 7-day free trial for new users. Experience all the features of AskStan risk-free and see how it can enhance your daily workflow.',
+    question: 'Do you offer different pricing plans?',
+    answer: 'Yes! We offer flexible monthly and yearly plans to fit your growth journey. Start with our monthly plan at $4.99/month, or save with our yearly plan at $49.99/year. Cancel anytime with no long-term commitments.',
   },
 ];
 
