@@ -186,8 +186,20 @@ const Dashboard: React.FC = () => {
           {/* AskStan Chatbot Container */}
           <div 
             id="askstan-chat"
-            className="flex-1 bg-gradient-to-br from-blue-50 to-amber-50 p-4"
+            className="flex-1 bg-gradient-to-br from-blue-50 to-amber-50 p-4 relative"
           >
+            {/* Stan's Photo in Chat Area */}
+            <div className="absolute top-4 right-4 z-10">
+              <img 
+                src="https://via.placeholder.com/80x80/3B82F6/FFFFFF?text=Stan" 
+                alt="Stan - Your AI Growth Coach"
+                className="w-12 h-12 rounded-full border-2 border-white shadow-lg"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </div>
+            
             {!chatbotLoaded && !chatbotError ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">

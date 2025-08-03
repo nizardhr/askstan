@@ -1,6 +1,5 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import Stripe from 'https://esm.sh/stripe@14.21.0'
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import Stripe from 'npm:stripe@18.4.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,14 +7,14 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
-      apiVersion: '2023-10-16',
+      apiVersion: '2024-12-18.acacia',
     })
 
     const supabase = createClient(
@@ -26,18 +25,18 @@ serve(async (req) => {
     const { priceId, userId, planType } = await req.json()
 
     if (!priceId || !userId || !planType) {
-      throw new Error('Missing required parameters')
+      throw new Error('Missing required parameters: priceId, userId, or planType')
     }
 
     // Get user profile
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
+      .from('user_profiles')
       .select('email')
       .eq('id', userId)
       .single()
 
     if (profileError || !profile) {
-      throw new Error('User not found')
+      throw new Error('User profile not found')
     }
 
     // Create Stripe checkout session
@@ -62,6 +61,9 @@ serve(async (req) => {
           planType: planType,
         },
       },
+      allow_promotion_codes: true,
+      billing_address_collection: 'auto',
+      customer_creation: 'always',
     })
 
     return new Response(

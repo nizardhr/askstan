@@ -51,12 +51,12 @@ const Hero: React.FC = () => {
           <div className="relative max-w-4xl mx-auto">
             <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 p-8">
               <div className="bg-gradient-to-br from-blue-50 to-amber-50 rounded-xl h-64 sm:h-80 flex items-center justify-center relative overflow-hidden">
-                {/* Stan Image Placeholder */}
+                {/* Stan's Photo */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <img 
-                    src="https://via.placeholder.com/400x400/3B82F6/FFFFFF?text=Stan+Photo" 
+                    src="https://via.placeholder.com/300x300/3B82F6/FFFFFF?text=Stan" 
                     alt="Stan - Your AI Social Media Growth Coach"
-                    className="w-56 h-56 object-cover rounded-full border-4 border-white shadow-xl"
+                    className="w-48 h-48 object-cover rounded-full border-4 border-white shadow-xl hover:scale-105 transition-transform duration-300"
                     onError={(e) => {
                       // Fallback if image fails to load
                       e.currentTarget.style.display = 'none';
@@ -75,9 +75,9 @@ const Hero: React.FC = () => {
                     </p>
                   </div>
                 </div>
-                <div className="text-center">
+                <div className="text-center mt-4">
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">Meet Stan</h3>
-                  <p className="text-gray-600">Your AI Social Media Growth Coach</p>
+                  <p className="text-gray-600">Your AI Social Media Growth Coach by Yvexan Agency</p>
                 </div>
               </div>
             </div>

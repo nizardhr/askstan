@@ -3,28 +3,28 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const faqs = [
   {
-    question: 'How does AskStan help me grow on social media?',
-    answer: 'AskStan is your real-time social media growth coach, specifically designed to help you build a dynamic and profitable social media business. We provide personalized strategies for LinkedIn, X (Twitter), Instagram, Threads, and other platforms, focusing on daily posting and engagement as your growth engine.',
+    question: 'How does AskStan help me dominate social media and build a profitable business?',
+    answer: 'AskStan is your personal AI-powered social media growth coach, specifically engineered to help you build a dynamic and profitable social media empire. We provide real-time, personalized strategies for LinkedIn, X (Twitter), Instagram, Threads, and other platforms. Our focus is on daily posting and strategic engagement as your primary growth engine - turning your social presence into a revenue-generating machine.',
   },
   {
-    question: 'What social media platforms does AskStan support?',
-    answer: 'AskStan specializes in LinkedIn, X (Twitter), Instagram, Threads, and other major social platforms. We provide platform-specific strategies, content ideas, engagement tactics, and growth hacks tailored to each platform\'s unique algorithm and audience behavior.',
+    question: 'Which social media platforms can AskStan help me conquer?',
+    answer: 'AskStan is your expert coach for LinkedIn, X (Twitter), Instagram, Threads, TikTok, and all major social platforms. We provide platform-specific growth strategies, viral content ideas, engagement tactics, and algorithm-beating techniques tailored to each platform\'s unique ecosystem. Whether you\'re building professional authority on LinkedIn or going viral on TikTok, AskStan has the strategies you need.',
   },
   {
-    question: 'How quickly can I see results with AskStan?',
-    answer: 'Many users see engagement improvements within the first week of implementing AskStan\'s daily posting and engagement strategies. Our AI coach provides real-time feedback and adjustments to optimize your content performance and audience growth continuously.',
+    question: 'How fast will I see explosive growth with AskStan?',
+    answer: 'Most users experience significant engagement boosts within their first week of implementing AskStan\'s proven daily posting and engagement strategies. Our real-time AI coach continuously analyzes your performance, providing instant feedback and strategic adjustments to maximize your reach, engagement, and follower growth. The key is consistency - AskStan keeps you accountable and strategic every single day.',
   },
   {
-    question: 'What kind of content strategies does AskStan provide?',
-    answer: 'AskStan helps you create viral-worthy content, optimize posting times, craft engaging captions, develop your personal brand voice, and build authentic engagement. We focus on turning your social media presence into a profitable business through strategic daily actions.',
+    question: 'What content strategies will make me stand out and go viral?',
+    answer: 'AskStan provides battle-tested strategies for creating viral-worthy content, optimizing posting times for maximum reach, crafting irresistible captions that drive engagement, developing your unique personal brand voice, and building authentic community engagement. We focus on transforming your social media presence into a profit-generating business through strategic daily actions that compound over time.',
   },
   {
-    question: 'Can AskStan help me monetize my social media following?',
-    answer: 'Absolutely! AskStan provides strategies for turning your social media presence into revenue streams through content monetization, brand partnerships, product launches, and audience building techniques that convert followers into customers.',
+    question: 'Can AskStan help me turn my followers into serious money?',
+    answer: 'Absolutely! AskStan specializes in monetization strategies that convert your growing audience into multiple revenue streams. We guide you through content monetization, securing lucrative brand partnerships, launching your own products/services, building email lists that sell, and implementing conversion tactics that turn casual followers into paying customers. Your social media becomes your most powerful business asset.',
   },
   {
-    question: 'Do you offer different pricing plans?',
-    answer: 'Yes! We offer flexible monthly and yearly plans to fit your growth journey. Start with our monthly plan at $4.99/month, or save with our yearly plan at $49.99/year. Cancel anytime with no long-term commitments.',
+    question: 'What investment do I need to unlock this growth potential?',
+    answer: 'We offer two powerful plans designed for serious growth: Monthly Pro at $4.99/month for immediate access, or Yearly Pro at $49.99/year (saving you $10). Both plans give you unlimited access to AskStan\'s growth coaching, real-time strategy sessions, and profit-building techniques. Cancel anytime - but once you see the results, you won\'t want to stop growing.',
   },
 ];
 

@@ -10,7 +10,7 @@ const plans: Plan[] = [
     name: 'Monthly Pro',
     price: 4.99,
     interval: 'month',
-    stripePriceId: 'price_XXXX', // Replace with actual monthly price ID
+    stripePriceId: 'price_XXXX', // Replace with your actual monthly price ID
     features: [
       'Unlimited AI conversations',
       'Social media growth strategies',
@@ -26,7 +26,7 @@ const plans: Plan[] = [
     name: 'Yearly Pro',
     price: 49.99,
     interval: 'year',
-    stripePriceId: 'price_XXXXXX', // Replace with actual yearly price ID
+    stripePriceId: 'price_XXXXXX', // Replace with your actual yearly price ID
     popular: true,
     features: [
       'Everything in Monthly Pro',
@@ -56,9 +56,12 @@ const PlanSelection: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch('/api/stripe/create-checkout-session', {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`;
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
