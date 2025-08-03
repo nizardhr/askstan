@@ -191,6 +191,15 @@ const Dashboard: React.FC = () => {
             {!chatbotLoaded && !chatbotError ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
+                  {/* Stan Image in Chat Loading */}
+                  <img 
+                    src="https://via.placeholder.com/120x120/3B82F6/FFFFFF?text=Stan" 
+                    alt="Stan"
+                    className="w-16 h-16 rounded-full mx-auto mb-4 border-2 border-blue-200"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
                   <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
                   <p className="text-gray-600">Loading AskStan chatbot...</p>
                   <p className="text-sm text-gray-500 mt-2">Connecting to Yvexan Agency service...</p>
