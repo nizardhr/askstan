@@ -24,8 +24,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     processStripeCheckout 
   } = useAuth();
   const location = useLocation();
-  const [initialLoad, setInitialLoad] = useState(true);
   const [checkoutProcessed, setCheckoutProcessed] = useState(false);
+  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
 
   // Handle Stripe checkout session completion
   useEffect(() => {
@@ -37,49 +37,20 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       setCheckoutProcessed(true);
       
       // Process the checkout session
-      processStripeCheckout(sessionId).then(() => {
+      processStripeCheckout(sessionId).then((success) => {
         console.log('🛡️ [ProtectedRoute] Checkout processing completed');
+        if (success) {
+          setCheckoutSuccess(true);
+          // Clean up URL
+          const url = new URL(window.location.href);
+          url.searchParams.delete('session_id');
+          window.history.replaceState({}, document.title, url.toString());
+        }
       }).catch((error) => {
         console.error('🛡️ [ProtectedRoute] Checkout processing failed:', error);
       });
     }
   }, [user, location.search, checkoutProcessed, processingCheckout, processStripeCheckout]);
-
-  // Clear initial loading state after a reasonable time
-  useEffect(() => {
-    if (loading) {
-      const timer = setTimeout(() => {
-        setInitialLoad(false);
-      }, 10000); // 10 second maximum wait
-
-      return () => clearTimeout(timer);
-    } else {
-      setInitialLoad(false);
-    }
-  }, [loading]);
-
-  // Debug logging
-  useEffect(() => {
-    const debugInfo = {
-      hasUser: !!user,
-      hasProfile: !!profile,
-      loading,
-      processingCheckout,
-      requireSubscription,
-      hasActiveSubscription: hasActiveSubscription(),
-      subscriptionStatus: subscription?.status || 'none',
-      initialLoad
-    };
-    
-    // Only log when there are significant changes
-    if (loading || processingCheckout || !user || !profile) {
-      console.log('🛡️ [ProtectedRoute] Route protection check:', debugInfo);
-    }
-    
-    if (loading || processingCheckout) {
-      console.log('⏳ [ProtectedRoute] Loading user data...');
-    }
-  }, [user, profile, subscription, loading, processingCheckout, requireSubscription, hasActiveSubscription, initialLoad]);
 
   // Show loading spinner while processing checkout or initial load
   if (processingCheckout) {
@@ -95,7 +66,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   // Show loading spinner during initial load
-  if (loading && initialLoad) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -108,52 +79,24 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Redirect to login if no user
   if (!user) {
-    console.log('🛡️ [ProtectedRoute] No authenticated user, redirecting to login');
     return <Navigate to="/auth" state={{ from: location }} replace />;
-  }
-
-  // If profile is required but missing, show a profile creation prompt
-  if (!profile && !loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-6">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Setting up your account...</h2>
-            <LoadingSpinner size="md" />
-            <p className="mt-4 text-sm text-gray-600">
-              We're creating your profile. This should only take a moment.
-            </p>
-            <p className="mt-2 text-xs text-gray-500">
-              If this takes longer than expected, please refresh the page.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   // Handle subscription requirement
   if (requireSubscription) {
     const userHasActiveSubscription = hasActiveSubscription();
     
-    if (!userHasActiveSubscription && !loading) {
-      // Check if user has completed onboarding or has valid subscription
-      const hasCompletedOnboarding = profile?.onboarding_completed === true;
-      const isInTrial = subscription?.status === 'trialing';
-      const isPastDue = subscription?.status === 'past_due';
-      
-      if (!isInTrial && !isPastDue) {
-        console.log('🛡️ [ProtectedRoute] No active subscription, redirecting to pricing');
+    if (!userHasActiveSubscription) {
+      if (subscription?.status === 'past_due' || subscription?.status === 'canceled') {
+        return <Navigate to="/payment-required" replace />;
+      } else {
         return <Navigate to="/subscribe" state={{ from: location }} replace />;
       }
     }
   }
 
-  // Show success message if just completed checkout
-  const urlParams = new URLSearchParams(location.search);
-  const sessionId = urlParams.get('session_id');
-  
-  if (sessionId && hasActiveSubscription() && checkoutProcessed) {
+  // Show success message if checkout was successful
+  if (checkoutSuccess && hasActiveSubscription()) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-6">
@@ -169,11 +112,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             </p>
             <button 
               onClick={() => {
-                // Clean up URL and continue to dashboard
-                const url = new URL(window.location.href);
-                url.searchParams.delete('session_id');
-                window.history.replaceState({}, document.title, url.toString());
-                window.location.reload();
+                setCheckoutSuccess(false);
               }}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
@@ -185,10 +124,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
   }
 
-  // All checks passed, render the protected content
-  if (!loading && !processingCheckout) {
-    console.log('✅ [ProtectedRoute] All checks passed, rendering protected content');
-  }
   return <>{children}</>;
 };
 

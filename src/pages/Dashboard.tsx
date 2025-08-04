@@ -2,12 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut, User, Settings, Send, MessageCircle, CheckCircle, Loader, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../lib/supabase';
 
 const Dashboard: React.FC = () => {
-  const { signOut, user, profile, refetchUserData } = useAuth();
+  const { signOut, user, profile, subscription } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [chatbotLoaded, setChatbotLoaded] = useState(false);
@@ -21,146 +19,6 @@ const Dashboard: React.FC = () => {
       timestamp: new Date(),
     },
   ]);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [validatingSession, setValidatingSession] = useState(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
-
-  // Add comprehensive logging
-  useEffect(() => {
-    // Only log on initial mount, not on every re-render
-    if (user && profile) {
-      console.log('🔄 Dashboard Component Ready - User:', user.id, 'Profile:', profile.email);
-    }
-  }, []);
-
-  const validateSession = async (sessionId: string) => {
-    console.log('🔍 [Dashboard] Starting Stripe session validation:', sessionId);
-    setValidatingSession(true);
-    setValidationError(null);
-    
-    try {
-      // Step 1: Get current session token
-      console.log('🔐 [Dashboard] Getting Supabase session...');
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('❌ [Dashboard] Session error:', sessionError);
-        throw new Error(`Session error: ${sessionError.message}`);
-      }
-      
-      if (!session?.access_token) {
-        console.error('❌ [Dashboard] No access token found');
-        throw new Error('Authentication required. Please sign in again.');
-      }
-
-      console.log('✅ [Dashboard] Session token obtained');
-      console.log('🚀 [Dashboard] Making validation request...');
-
-      // Step 2: Call validation endpoint
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-            'x-requested-with': 'XMLHttpRequest',
-          },
-          body: JSON.stringify({ 
-            sessionId, 
-            userId: profile?.id
-          }),
-        }
-      );
-
-      console.log('📡 [Dashboard] Response status:', response.status);
-      console.log('📡 [Dashboard] Response headers:', Object.fromEntries(response.headers.entries()));
-      
-      // Step 3: Handle response
-      let result;
-      try {
-        const responseText = await response.text();
-        console.log('📄 [Dashboard] Raw response:', responseText);
-        result = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('❌ [Dashboard] Failed to parse JSON response:', parseError);
-        throw new Error('Invalid response from server');
-      }
-
-      console.log('📦 [Dashboard] Parsed response:', result);
-
-      if (!response.ok) {
-        console.error('❌ [Dashboard] HTTP Error:', response.status, response.statusText);
-        throw new Error(`HTTP ${response.status}: ${result.error || response.statusText}`);
-      }
-
-      if (result.success) {
-        console.log('🎉 [Dashboard] Stripe session validated successfully!');
-        setShowSuccess(true);
-        
-        // Refresh user data to get updated subscription
-        console.log('🔄 [Dashboard] Refreshing user data...');
-        if (refetchUserData) {
-          await refetchUserData();
-        }
-        
-        // Show success message for 5 seconds
-        setTimeout(() => {
-          setShowSuccess(false);
-        }, 5000);
-      } else {
-        console.error('❌ [Dashboard] Validation failed:', result.error);
-        setValidationError(result.error || 'Payment validation failed');
-      }
-    } catch (error: any) {
-      console.error('💥 [Dashboard] Validation error:', error);
-      console.error('💥 [Dashboard] Error stack:', error.stack);
-      setValidationError(error.message || 'Failed to validate payment');
-    } finally {
-      // Clean URL after validation attempt
-      const urlParams = new URLSearchParams(location.search);
-      urlParams.delete('session_id');
-      const newUrl = window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
-      console.log('🧹 [Dashboard] Cleaning URL to:', newUrl);
-      window.history.replaceState({}, document.title, newUrl);
-      setValidatingSession(false);
-    }
-  };
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(location.search);
-    const sessionId = urlParams.get('session_id');
-
-    // Only log when there's a session_id to process
-    if (sessionId) {
-      console.log('🔄 [Dashboard] useEffect triggered with session_id:', sessionId);
-      console.log('👤 [Dashboard] user exists:', !!user);
-      console.log('📋 [Dashboard] profile exists:', !!profile);
-      console.log('⏳ [Dashboard] currently validating:', validatingSession);
-    }
-
-    if (!sessionId) {
-      return;
-    }
-
-    if (!user) {
-      console.log('⏳ [Dashboard] Waiting for user to load...');
-      return;
-    }
-
-    if (!profile) {
-      console.log('⏳ [Dashboard] Waiting for profile to load...');
-      return;
-    }
-
-    if (validatingSession) {
-      console.log('⏳ [Dashboard] Already validating, skipping...');
-      return;
-    }
-
-    console.log('🚀 [Dashboard] All conditions met. Starting session validation...');
-    validateSession(sessionId);
-  }, [user, profile, location.search, validatingSession]);
 
   const handleLogout = async () => {
     try {
@@ -243,57 +101,8 @@ const Dashboard: React.FC = () => {
     };
   }, [user]);
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50">
-      {/* Payment Success Notification */}
-      {showSuccess && (
-        <div className="fixed top-4 right-4 z-50 bg-green-100 border border-green-400 text-green-700 px-6 py-4 rounded-lg shadow-lg max-w-md">
-          <div className="flex items-center">
-            <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
-            <span className="font-semibold">🎉 Payment successful! Welcome to AskStan Pro!</span>
-          </div>
-        </div>
-      )}
-
-      {/* Payment Validation Loading */}
-      {validatingSession && (
-        <div className="fixed top-4 right-4 z-50 bg-blue-100 border border-blue-400 text-blue-700 px-6 py-4 rounded-lg shadow-lg max-w-md">
-          <div className="flex items-center">
-            <Loader className="w-5 h-5 mr-2 animate-spin flex-shrink-0" />
-            <span>Validating your payment...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Payment Validation Error */}
-      {validationError && (
-        <div className="fixed top-4 right-4 z-50 bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg shadow-lg max-w-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <AlertTriangle className="w-5 h-5 mr-2 flex-shrink-0" />
-              <span className="font-semibold">Payment validation failed: {validationError}</span>
-            </div>
-            <button 
-              onClick={() => setValidationError(null)}
-              className="ml-4 text-red-500 hover:text-red-700 flex-shrink-0"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -357,6 +166,14 @@ const Dashboard: React.FC = () => {
             <p className="text-gray-600">
               Welcome to your AskStan dashboard! Chat with Stan below to get started.
             </p>
+            {subscription && (
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-800">
+                  <strong>Subscription Status:</strong> {subscription.status} 
+                  {subscription.plan_type && ` (${subscription.plan_type})`}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Chat Interface */}

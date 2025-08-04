@@ -114,7 +114,7 @@ const Settings: React.FC = () => {
                     Email Address
                   </label>
                   <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
-                    {profile?.email || user?.email || 'Loading...'}
+                    {profile?.email || user?.email || 'Not available'}
                   </div>
                 </div>
                 
@@ -123,7 +123,7 @@ const Settings: React.FC = () => {
                     Member Since
                   </label>
                   <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
-                    {profile?.created_at ? formatDate(profile.created_at) : 'Loading...'}
+                    {profile?.created_at ? formatDate(profile.created_at) : 'Not available'}
                   </div>
                 </div>
               </div>

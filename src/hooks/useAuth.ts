@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, UserProfile, UserSubscription, platformUtils } from '../lib/supabase';
 
-// Prevent infinite loops by tracking fetch operations
+// Prevent infinite loops with better state management
 let isFetchingUserData = false;
 let lastFetchedUserId: string | null = null;
+let lastAuthEvent: string | null = null;
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -26,15 +27,6 @@ export const useAuth = () => {
       if (session?.user) {
         console.log('🔄 [useAuth] Initial session found for user:', session.user.id);
         await fetchUserData(session.user.id, 'initial');
-        
-        // Check for session_id parameter from Stripe checkout
-        const urlParams = new URLSearchParams(window.location.search);
-        const sessionId = urlParams.get('session_id');
-        
-        if (sessionId) {
-          console.log('💳 [useAuth] Found Stripe session ID, processing checkout...');
-          await processStripeCheckout(sessionId);
-        }
       }
       
       setLoading(false);
@@ -47,22 +39,24 @@ export const useAuth = () => {
       async (event, session) => {
         console.log('🔄 [useAuth] Auth state changed:', event);
         
-        // Ignore certain events that don't require data refetch
-        if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        // Prevent duplicate processing of the same event
+        if (event === lastAuthEvent && event !== 'SIGNED_IN') {
           console.log('ℹ️ [useAuth] Ignoring', event, 'event to prevent infinite loops');
           return;
         }
+        
+        lastAuthEvent = event;
         
         setUser(session?.user ?? null);
         
         if (session?.user) {
           console.log('📋 [useAuth] Auth change - fetching user data for:', session.user.id);
           await fetchUserData(session.user.id, event);
-          // Update user activity
-          await platformUtils.updateUserActivity(session.user.id);
         } else {
           setProfile(null);
           setSubscription(null);
+          isFetchingUserData = false;
+          lastFetchedUserId = null;
         }
         
         setLoading(false);
@@ -74,14 +68,14 @@ export const useAuth = () => {
     };
   }, []);
 
-  const processStripeCheckout = async (sessionId: string) => {
+  const processStripeCheckout = async (sessionId: string): Promise<boolean> => {
     if (processingCheckout) return; // Prevent duplicate processing
     
     try {
       setProcessingCheckout(true);
       console.log('🔄 [useAuth] Processing Stripe checkout session:', sessionId);
       
-      // Call the validate-checkout-session function instead
+      // Get current session for auth
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         throw new Error('No authenticated session');
@@ -104,36 +98,35 @@ export const useAuth = () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        console.error('❌ [useAuth] Checkout validation failed:', errorData);
+        return false;
       }
 
       const result = await response.json();
-      const success = result.success;
       
-      if (success) {
+      if (result.success) {
         console.log('✅ [useAuth] Checkout processed successfully, refreshing user data...');
-        // Refresh user data to get updated subscription
+        // Force refresh user data
         if (user) {
+          isFetchingUserData = false; // Reset flag to allow fresh fetch
           await fetchUserData(user.id, 'checkout_success');
         }
-        
-        // Clean up URL to remove session_id parameter
-        const url = new URL(window.location.href);
-        url.searchParams.delete('session_id');
-        window.history.replaceState({}, document.title, url.toString());
+        return true;
       } else {
         console.error('❌ [useAuth] Checkout processing failed:', result.error);
+        return false;
       }
     } catch (error) {
       console.error('💥 [useAuth] Error processing checkout:', error);
+      return false;
     } finally {
       setProcessingCheckout(false);
     }
   };
 
   const fetchUserData = async (userId: string, source: string = 'unknown') => {
-    // Prevent infinite loops
-    if (isFetchingUserData && lastFetchedUserId === userId) {
+    // Prevent infinite loops - but allow checkout_success to override
+    if (isFetchingUserData && lastFetchedUserId === userId && source !== 'checkout_success') {
       console.log('⏭️ [useAuth] Skipping fetch - already in progress for user:', userId);
       return;
     }
@@ -152,22 +145,12 @@ export const useAuth = () => {
           setProfile(profileData);
           console.log('✅ [useAuth] Profile loaded successfully');
         } else {
-          console.warn('⚠️ [useAuth] No profile found, creating one...');
-          const newProfile = await platformUtils.createUserProfile(userId);
-          if (newProfile) {
-            setProfile(newProfile);
-            console.log('✅ [useAuth] Profile created successfully');
-          }
+          console.warn('⚠️ [useAuth] No profile found');
+          setProfile(null);
         }
       } catch (profileError) {
         console.error('❌ [useAuth] Profile fetch/create failed:', profileError);
-        // Set a minimal profile to prevent infinite loops
-        setProfile({
-          id: userId,
-          email: user?.email || 'user@example.com',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
+        setProfile(null);
       }
 
       // Fetch user subscription with better error handling
@@ -188,7 +171,6 @@ export const useAuth = () => {
       }
     } catch (error) {
       console.error('💥 [useAuth] Error fetching user data:', error);
-      // Don't reset profile/subscription on error to prevent infinite loops
     } finally {
       isFetchingUserData = false;
     }
@@ -221,13 +203,6 @@ export const useAuth = () => {
       
       console.log('✅ [useAuth] Signup successful, user created');
       
-      // Wait a moment for the database trigger to complete, then fetch user data
-      if (data.user) {
-        setTimeout(() => {
-          fetchUserData(data.user!.id, 'signup');
-        }, 2000); // Increased timeout to allow database operations to complete
-      }
-      
       return data;
     } catch (error) {
       console.error('💥 [useAuth] Signup failed:', error);
@@ -251,12 +226,6 @@ export const useAuth = () => {
       
       console.log('✅ [useAuth] SignIn successful');
       
-      // Update user activity on successful login
-      if (data.user) {
-        await platformUtils.updateUserActivity(data.user.id);
-        // Don't fetch here - let the auth state change handle it
-      }
-      
       return data;
     } catch (error) {
       console.error('💥 [useAuth] SignIn failed:', error);
@@ -270,6 +239,9 @@ export const useAuth = () => {
     setUser(null);
     setProfile(null);
     setSubscription(null);
+    isFetchingUserData = false;
+    lastFetchedUserId = null;
+    lastAuthEvent = null;
     
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
@@ -323,7 +295,6 @@ export const useAuth = () => {
 
   const hasActiveSubscription = () => {
     const active = subscription?.status === 'active' || subscription?.status === 'trialing';
-    console.log('🔍 [useAuth] Checking active subscription:', { status: subscription?.status, active });
     return active;
   };
 
