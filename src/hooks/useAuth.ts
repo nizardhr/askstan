@@ -218,7 +218,6 @@ export const useAuth = () => {
     signIn,
     signOut,
     resetPassword,
-    resetPassword,
     updatePassword,
     updateProfile,
     hasActiveSubscription,
