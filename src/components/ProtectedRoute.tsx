@@ -15,7 +15,22 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user, profile, loading, hasActiveSubscription } = useAuth();
   const location = useLocation();
 
+  // Check if user is coming back from Stripe payment
+  const urlParams = new URLSearchParams(location.search);
+  const hasStripeSession = urlParams.has('session_id');
+
+  console.log('🛡️ [ProtectedRoute] Route protection check:', {
+    hasUser: !!user,
+    hasProfile: !!profile,
+    loading,
+    requireSubscription,
+    hasActiveSubscription: hasActiveSubscription(),
+    hasStripeSession,
+    pathname: location.pathname
+  });
+
   if (loading) {
+    console.log('⏳ [ProtectedRoute] Loading user data...');
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50 flex items-center justify-center">
         <div className="text-center">
@@ -27,11 +42,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!user) {
+    console.log('❌ [ProtectedRoute] No user found, redirecting to auth');
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
   // If user exists but no profile, show loading (profile might still be creating)
   if (user && !profile && !loading) {
+    console.log('⏳ [ProtectedRoute] User exists but no profile, waiting...');
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50 flex items-center justify-center">
         <div className="text-center">
@@ -42,10 +59,20 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
   }
 
+  // CRITICAL FIX: If user is coming from Stripe payment, temporarily allow access
+  // to dashboard even without active subscription so session validation can run
+  if (requireSubscription && hasStripeSession && location.pathname === '/dashboard') {
+    console.log('💳 [ProtectedRoute] Stripe session detected, allowing temporary dashboard access for validation');
+    return <>{children}</>;
+  }
+
+  // Normal subscription check for other routes or when no Stripe session
   if (requireSubscription && !hasActiveSubscription()) {
+    console.log('🚫 [ProtectedRoute] Subscription required but not found, redirecting to payment-required');
     return <Navigate to="/payment-required" state={{ from: location }} replace />;
   }
 
+  console.log('✅ [ProtectedRoute] All checks passed, rendering children');
   return <>{children}</>;
 };
 

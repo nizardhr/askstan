@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LogOut, User, Settings, Send, MessageCircle, CheckCircle, Loader } from 'lucide-react';
+import { LogOut, User, Settings, Send, MessageCircle, CheckCircle, Loader, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 
 const Dashboard: React.FC = () => {
-  const { signOut, user, profile } = useAuth();
+  const { signOut, user, profile, refetchUserData } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -25,20 +25,44 @@ const Dashboard: React.FC = () => {
   const [validatingSession, setValidatingSession] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Add comprehensive logging
+  useEffect(() => {
+    console.log('🔄 Dashboard Component Mounted');
+    console.log('📍 Current URL:', window.location.href);
+    console.log('🔗 Location Search:', location.search);
+    console.log('👤 User Object:', user);
+    console.log('📋 Profile Object:', profile);
+    console.log('⚡ Environment Check:', {
+      VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Present' : '❌ Missing',
+      NODE_ENV: import.meta.env.NODE_ENV,
+    });
+  }, []);
+
   const validateSession = async (sessionId: string) => {
-    console.log('[Dashboard] Validating Stripe session:', sessionId);
+    console.log('🔍 [Dashboard] Starting Stripe session validation:', sessionId);
     setValidatingSession(true);
     setValidationError(null);
     
     try {
-      // Get current session token
+      // Step 1: Get current session token
+      console.log('🔐 [Dashboard] Getting Supabase session...');
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      if (sessionError || !session?.access_token) {
+      if (sessionError) {
+        console.error('❌ [Dashboard] Session error:', sessionError);
+        throw new Error(`Session error: ${sessionError.message}`);
+      }
+      
+      if (!session?.access_token) {
+        console.error('❌ [Dashboard] No access token found');
         throw new Error('Authentication required. Please sign in again.');
       }
 
-      console.log('[Dashboard] Making validation request...');
+      console.log('✅ [Dashboard] Session token obtained');
+      console.log('🚀 [Dashboard] Making validation request...');
+
+      // Step 2: Call validation endpoint
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
         {
@@ -55,38 +79,53 @@ const Dashboard: React.FC = () => {
         }
       );
 
-      console.log('[Dashboard] Response status:', response.status);
+      console.log('📡 [Dashboard] Response status:', response.status);
+      console.log('📡 [Dashboard] Response headers:', Object.fromEntries(response.headers.entries()));
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Dashboard] Response error:', errorText);
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Step 3: Handle response
+      let result;
+      try {
+        const responseText = await response.text();
+        console.log('📄 [Dashboard] Raw response:', responseText);
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('❌ [Dashboard] Failed to parse JSON response:', parseError);
+        throw new Error('Invalid response from server');
       }
 
-      const result = await response.json();
-      console.log('[Dashboard] Validation API response:', result);
+      console.log('📦 [Dashboard] Parsed response:', result);
+
+      if (!response.ok) {
+        console.error('❌ [Dashboard] HTTP Error:', response.status, response.statusText);
+        throw new Error(`HTTP ${response.status}: ${result.error || response.statusText}`);
+      }
 
       if (result.success) {
-        console.log('[Dashboard] Stripe session validated successfully!');
+        console.log('🎉 [Dashboard] Stripe session validated successfully!');
         setShowSuccess(true);
         
-        // Show success message for 3 seconds
+        // Refresh user data to get updated subscription
+        console.log('🔄 [Dashboard] Refreshing user data...');
+        await refetchUserData();
+        
+        // Show success message for 5 seconds
         setTimeout(() => {
           setShowSuccess(false);
-        }, 3000);
+        }, 5000);
       } else {
-        console.error('[Dashboard] Stripe session validation failed:', result.error);
+        console.error('❌ [Dashboard] Validation failed:', result.error);
         setValidationError(result.error || 'Payment validation failed');
       }
     } catch (error: any) {
-      console.error('[Dashboard] Error validating Stripe session:', error);
+      console.error('💥 [Dashboard] Validation error:', error);
+      console.error('💥 [Dashboard] Error stack:', error.stack);
       setValidationError(error.message || 'Failed to validate payment');
     } finally {
       // Clean URL after validation attempt
       const urlParams = new URLSearchParams(location.search);
       urlParams.delete('session_id');
       const newUrl = window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
-      console.log('[Dashboard] Cleaning URL to:', newUrl);
+      console.log('🧹 [Dashboard] Cleaning URL to:', newUrl);
       window.history.replaceState({}, document.title, newUrl);
       setValidatingSession(false);
     }
@@ -96,23 +135,36 @@ const Dashboard: React.FC = () => {
     const urlParams = new URLSearchParams(location.search);
     const sessionId = urlParams.get('session_id');
 
-    console.log('[Dashboard] URL params:', location.search);
-    console.log('[Dashboard] session_id:', sessionId);
-    console.log('[Dashboard] user:', user);
-    console.log('[Dashboard] profile:', profile);
+    console.log('🔄 [Dashboard] useEffect triggered');
+    console.log('📍 [Dashboard] URL params:', location.search);
+    console.log('🎫 [Dashboard] session_id:', sessionId);
+    console.log('👤 [Dashboard] user exists:', !!user);
+    console.log('📋 [Dashboard] profile exists:', !!profile);
+    console.log('⏳ [Dashboard] currently validating:', validatingSession);
 
     if (!sessionId) {
-      console.log('[Dashboard] No session_id in URL, skipping validation.');
+      console.log('ℹ️ [Dashboard] No session_id in URL, skipping validation.');
       return;
     }
 
-    if (user && profile && !validatingSession) {
-      console.log('[Dashboard] All data ready. Starting session validation...');
-      validateSession(sessionId);
-    } else {
-      console.log('[Dashboard] user/profile not ready yet. Waiting...');
+    if (!user) {
+      console.log('⏳ [Dashboard] Waiting for user to load...');
+      return;
     }
-  }, [user, profile, location.search]);
+
+    if (!profile) {
+      console.log('⏳ [Dashboard] Waiting for profile to load...');
+      return;
+    }
+
+    if (validatingSession) {
+      console.log('⏳ [Dashboard] Already validating, skipping...');
+      return;
+    }
+
+    console.log('🚀 [Dashboard] All conditions met. Starting session validation...');
+    validateSession(sessionId);
+  }, [user, profile, location.search, validatingSession]);
 
   const handleLogout = async () => {
     try {
@@ -200,7 +252,18 @@ const Dashboard: React.FC = () => {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-600">Loading user...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading profile...</p>
         </div>
       </div>
     );
@@ -210,9 +273,9 @@ const Dashboard: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50">
       {/* Payment Success Notification */}
       {showSuccess && (
-        <div className="fixed top-4 right-4 z-50 bg-green-100 border border-green-400 text-green-700 px-6 py-4 rounded-lg shadow-lg">
+        <div className="fixed top-4 right-4 z-50 bg-green-100 border border-green-400 text-green-700 px-6 py-4 rounded-lg shadow-lg max-w-md">
           <div className="flex items-center">
-            <CheckCircle className="w-5 h-5 mr-2" />
+            <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
             <span className="font-semibold">Payment successful! Welcome to AskStan Pro!</span>
           </div>
         </div>
@@ -220,9 +283,9 @@ const Dashboard: React.FC = () => {
 
       {/* Payment Validation Loading */}
       {validatingSession && (
-        <div className="fixed top-4 right-4 z-50 bg-blue-100 border border-blue-400 text-blue-700 px-6 py-4 rounded-lg shadow-lg">
+        <div className="fixed top-4 right-4 z-50 bg-blue-100 border border-blue-400 text-blue-700 px-6 py-4 rounded-lg shadow-lg max-w-md">
           <div className="flex items-center">
-            <Loader className="w-5 h-5 mr-2 animate-spin" />
+            <Loader className="w-5 h-5 mr-2 animate-spin flex-shrink-0" />
             <span>Validating your payment...</span>
           </div>
         </div>
@@ -230,12 +293,15 @@ const Dashboard: React.FC = () => {
 
       {/* Payment Validation Error */}
       {validationError && (
-        <div className="fixed top-4 right-4 z-50 bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg shadow-lg">
+        <div className="fixed top-4 right-4 z-50 bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg shadow-lg max-w-md">
           <div className="flex items-center justify-between">
-            <span className="font-semibold">Payment validation failed: {validationError}</span>
+            <div className="flex items-center">
+              <AlertTriangle className="w-5 h-5 mr-2 flex-shrink-0" />
+              <span className="font-semibold">Payment validation failed: {validationError}</span>
+            </div>
             <button 
               onClick={() => setValidationError(null)}
-              className="ml-4 text-red-500 hover:text-red-700"
+              className="ml-4 text-red-500 hover:text-red-700 flex-shrink-0"
             >
               ×
             </button>
