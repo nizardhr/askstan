@@ -1,19 +1,17 @@
-// Complete bypass solution - Replace your Dashboard component with this
-// This works without any database dependencies for payment validation
-
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut, User, Settings, Send, MessageCircle, CheckCircle, Loader, AlertTriangle } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 
 const Dashboard: React.FC = () => {
+  const { signOut, user, profile, refetchUserData } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  
-  // Simple user state without database dependencies
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+
   const [showDropdown, setShowDropdown] = useState(false);
+  const [chatbotLoaded, setChatbotLoaded] = useState(false);
+  const [chatbotError, setChatbotError] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([
     {
@@ -23,71 +21,48 @@ const Dashboard: React.FC = () => {
       timestamp: new Date(),
     },
   ]);
-  
-  // Payment validation states
   const [showSuccess, setShowSuccess] = useState(false);
   const [validatingSession, setValidatingSession] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Get user from auth directly, bypassing database
+  // Add comprehensive logging
   useEffect(() => {
-    const getUser = async () => {
-      console.log('🔑 [Dashboard] Getting user from auth...');
-      const { data: { user: authUser }, error } = await supabase.auth.getUser();
-      
-      if (error) {
-        console.error('❌ [Dashboard] Auth error:', error);
-        navigate('/auth');
-        return;
-      }
-      
-      if (authUser) {
-        console.log('✅ [Dashboard] User found:', authUser.id);
-        setUser(authUser);
-      } else {
-        console.log('❌ [Dashboard] No user found, redirecting to auth');
-        navigate('/auth');
-      }
-      
-      setLoading(false);
-    };
-
-    getUser();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('🔄 [Dashboard] Auth state changed:', event);
-      
-      if (session?.user) {
-        setUser(session.user);
-        setLoading(false);
-      } else {
-        setUser(null);
-        navigate('/auth');
-      }
+    console.log('🔄 Dashboard Component Mounted');
+    console.log('📍 Current URL:', window.location.href);
+    console.log('🔗 Location Search:', location.search);
+    console.log('👤 User Object:', user);
+    console.log('📋 Profile Object:', profile);
+    console.log('⚡ Environment Check:', {
+      VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Present' : '❌ Missing',
+      NODE_ENV: import.meta.env.NODE_ENV,
     });
+  }, []);
 
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  // Payment session validation - works without database
   const validateSession = async (sessionId: string) => {
     console.log('🔍 [Dashboard] Starting Stripe session validation:', sessionId);
     setValidatingSession(true);
     setValidationError(null);
     
     try {
-      // Get session token
+      // Step 1: Get current session token
+      console.log('🔐 [Dashboard] Getting Supabase session...');
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      if (sessionError || !session?.access_token) {
+      if (sessionError) {
+        console.error('❌ [Dashboard] Session error:', sessionError);
+        throw new Error(`Session error: ${sessionError.message}`);
+      }
+      
+      if (!session?.access_token) {
+        console.error('❌ [Dashboard] No access token found');
         throw new Error('Authentication required. Please sign in again.');
       }
 
       console.log('✅ [Dashboard] Session token obtained');
       console.log('🚀 [Dashboard] Making validation request...');
 
-      // Call validation endpoint with user ID from auth (not database)
+      // Step 2: Call validation endpoint
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
         {
@@ -99,31 +74,43 @@ const Dashboard: React.FC = () => {
           },
           body: JSON.stringify({ 
             sessionId, 
-            userId: user?.id // Use auth user ID directly
+            userId: profile?.id
           }),
         }
       );
 
       console.log('📡 [Dashboard] Response status:', response.status);
+      console.log('📡 [Dashboard] Response headers:', Object.fromEntries(response.headers.entries()));
       
+      // Step 3: Handle response
       let result;
       try {
         const responseText = await response.text();
         console.log('📄 [Dashboard] Raw response:', responseText);
         result = JSON.parse(responseText);
       } catch (parseError) {
-        console.error('❌ [Dashboard] Failed to parse response:', parseError);
+        console.error('❌ [Dashboard] Failed to parse JSON response:', parseError);
         throw new Error('Invalid response from server');
       }
 
+      console.log('📦 [Dashboard] Parsed response:', result);
+
       if (!response.ok) {
+        console.error('❌ [Dashboard] HTTP Error:', response.status, response.statusText);
         throw new Error(`HTTP ${response.status}: ${result.error || response.statusText}`);
       }
 
       if (result.success) {
-        console.log('🎉 [Dashboard] Payment validated successfully!');
+        console.log('🎉 [Dashboard] Stripe session validated successfully!');
         setShowSuccess(true);
         
+        // Refresh user data to get updated subscription
+        console.log('🔄 [Dashboard] Refreshing user data...');
+        if (refetchUserData) {
+          await refetchUserData();
+        }
+        
+        // Show success message for 5 seconds
         setTimeout(() => {
           setShowSuccess(false);
         }, 5000);
@@ -133,28 +120,32 @@ const Dashboard: React.FC = () => {
       }
     } catch (error: any) {
       console.error('💥 [Dashboard] Validation error:', error);
+      console.error('💥 [Dashboard] Error stack:', error.stack);
       setValidationError(error.message || 'Failed to validate payment');
     } finally {
-      // Clean URL
+      // Clean URL after validation attempt
       const urlParams = new URLSearchParams(location.search);
       urlParams.delete('session_id');
       const newUrl = window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
+      console.log('🧹 [Dashboard] Cleaning URL to:', newUrl);
       window.history.replaceState({}, document.title, newUrl);
       setValidatingSession(false);
     }
   };
 
-  // Check for payment session on load
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const sessionId = urlParams.get('session_id');
 
-    console.log('🔄 [Dashboard] Checking for payment session...');
+    console.log('🔄 [Dashboard] useEffect triggered');
+    console.log('📍 [Dashboard] URL params:', location.search);
     console.log('🎫 [Dashboard] session_id:', sessionId);
     console.log('👤 [Dashboard] user exists:', !!user);
+    console.log('📋 [Dashboard] profile exists:', !!profile);
+    console.log('⏳ [Dashboard] currently validating:', validatingSession);
 
     if (!sessionId) {
-      console.log('ℹ️ [Dashboard] No session_id in URL');
+      console.log('ℹ️ [Dashboard] No session_id in URL, skipping validation.');
       return;
     }
 
@@ -163,18 +154,23 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    if (validatingSession) {
-      console.log('⏳ [Dashboard] Already validating...');
+    if (!profile) {
+      console.log('⏳ [Dashboard] Waiting for profile to load...');
       return;
     }
 
-    console.log('🚀 [Dashboard] Starting payment validation...');
+    if (validatingSession) {
+      console.log('⏳ [Dashboard] Already validating, skipping...');
+      return;
+    }
+
+    console.log('🚀 [Dashboard] All conditions met. Starting session validation...');
     validateSession(sessionId);
-  }, [user, location.search, validatingSession]);
+  }, [user, profile, location.search, validatingSession]);
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
+      await signOut();
       navigate('/', { replace: true });
     } catch (error) {
       console.error('Error signing out:', error);
@@ -198,7 +194,8 @@ const Dashboard: React.FC = () => {
     setTimeout(() => {
       const botResponse = {
         id: messages.length + 2,
-        text: "I'm currently running in fallback mode. The full AskStan chatbot service by Yvexan Agency will be available once the service is restored. In the meantime, I can provide basic assistance.",
+        text:
+          "I'm currently running in fallback mode. The full AskStan chatbot service by Yvexan Agency will be available once the service is restored. In the meantime, I can provide basic assistance.",
         sender: 'bot' as const,
         timestamp: new Date(),
       };
@@ -206,7 +203,53 @@ const Dashboard: React.FC = () => {
     }, 1000);
   };
 
-  if (loading) {
+  useEffect(() => {
+    if (!user) return;
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.voiceflow.com/widget-next/bundle.mjs';
+    script.type = 'text/javascript';
+
+    script.onload = function () {
+      try {
+        (window as any).voiceflow.chat.load({
+          verify: { projectID: '688d150bdb7293eb99bdbe16' },
+          url: 'https://general-runtime.voiceflow.com',
+          versionID: 'production',
+          voice: { url: 'https://runtime-api.voiceflow.com' },
+        });
+        setChatbotLoaded(true);
+        setChatbotError(false);
+      } catch (error) {
+        setChatbotError(true);
+        setChatbotLoaded(false);
+      }
+    };
+
+    script.onerror = function () {
+      setChatbotError(true);
+      setChatbotLoaded(false);
+    };
+
+    const firstScript = document.getElementsByTagName('script')[0];
+    if (firstScript && firstScript.parentNode) {
+      firstScript.parentNode.insertBefore(script, firstScript);
+    } else {
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      try {
+        if ((window as any).voiceflow) {
+          (window as any).voiceflow.chat.destroy();
+        }
+      } catch (error) {
+        console.error('Error cleaning up Voiceflow:', error);
+      }
+    };
+  }, [user]);
+
+  if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50 flex items-center justify-center">
         <div className="text-center">
@@ -216,21 +259,6 @@ const Dashboard: React.FC = () => {
       </div>
     );
   }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 mb-4">Please sign in to continue</p>
-          <Link to="/auth" className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
-            Sign In
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  const userEmail = user.email || user.user_metadata?.email || 'User';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50">
@@ -287,7 +315,7 @@ const Dashboard: React.FC = () => {
 
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-600 hidden sm:block">
-                Welcome back, {userEmail}!
+                Welcome back, {profile?.email || 'User'}!
               </span>
               
               <div className="relative">
@@ -333,7 +361,7 @@ const Dashboard: React.FC = () => {
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard</h1>
             <p className="text-gray-600">
-              Welcome to your AskStan dashboard! Your payment validation is working perfectly.
+              Welcome to your AskStan dashboard! Chat with Stan below to get started.
             </p>
           </div>
 
