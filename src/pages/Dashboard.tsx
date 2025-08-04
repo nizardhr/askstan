@@ -190,28 +190,21 @@ const Dashboard: React.FC = () => {
           >
             {/* Stan's Photo in Chat Area */}
             <div className="absolute top-4 right-4 z-10">
-              <img 
-                src="https://via.placeholder.com/80x80/3B82F6/FFFFFF?text=Stan" 
-                alt="Stan - Your AI Growth Coach"
-                className="w-12 h-12 rounded-full border-2 border-white shadow-lg"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
+              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-amber-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
+                  <MessageCircle className="w-4 h-4 text-blue-600" />
+                </div>
+              </div>
             </div>
             
             {!chatbotLoaded && !chatbotError ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
-                  {/* Stan Image in Chat Loading */}
-                  <img 
-                    src="https://via.placeholder.com/120x120/3B82F6/FFFFFF?text=Stan" 
-                    alt="Stan"
-                    className="w-16 h-16 rounded-full mx-auto mb-4 border-2 border-blue-200"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
+                  <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-amber-500 rounded-full mx-auto mb-4 border-2 border-blue-200 flex items-center justify-center">
+                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
+                      <MessageCircle className="w-5 h-5 text-blue-600" />
+                    </div>
+                  </div>
                   <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
                   <p className="text-gray-600">Loading AskStan chatbot...</p>
                   <p className="text-sm text-gray-500 mt-2">Connecting to Yvexan Agency service...</p>
