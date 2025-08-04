@@ -31,35 +31,36 @@ const Dashboard: React.FC = () => {
   const sessionId = urlParams.get('session_id');
 
   const validateSession = async (sessionId: string) => {
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${user?.access_token}` // Optional if needed
-          },
-          body: JSON.stringify({ session_id: sessionId, userId: user.id })
-        }
-      );
-
-      const result = await response.json();
-
-      if (result.success) {
-        console.log('Stripe session validated successfully!');
-        // Optional: update user profile context with subscription active flag
-      } else {
-        console.error('Stripe session validation failed:', result.message);
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user?.access_token}` // optional for later secure method
+        },
+        body: JSON.stringify({ sessionId: sessionId, userId: user.id })
       }
-    } catch (error) {
-      console.error('Error validating Stripe session:', error);
-    } finally {
-      // Clean URL to prevent re-processing
-      urlParams.delete('session_id');
-      window.history.replaceState({}, document.title, `${window.location.pathname}`);
+    );
+
+    const result = await response.json();
+
+    if (result.success) {
+      console.log('Stripe session validated successfully!');
+    } else {
+      console.error('Stripe session validation failed:', result.error);
     }
-  };
+  } catch (error) {
+    console.error('Error validating Stripe session:', error);
+  } finally {
+    // Clean URL to prevent looping
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.delete('session_id');
+    window.history.replaceState({}, document.title, `${window.location.pathname}`);
+  }
+};
+
 
   if (sessionId && user) {
     console.log('Validating Stripe session:', sessionId);
