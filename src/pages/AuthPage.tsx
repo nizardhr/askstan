@@ -47,7 +47,19 @@ const AuthPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Auth error:', err);
-      setError(err.message || 'An error occurred');
+      
+      // Handle specific error types with user-friendly messages
+      if (err.message?.includes('rate limit exceeded')) {
+        setError('Too many signup attempts. Please wait a few minutes before trying again, or try signing in if you already have an account.');
+      } else if (err.message?.includes('User already registered')) {
+        setError('An account with this email already exists. Try signing in instead.');
+      } else if (err.message?.includes('Invalid login credentials')) {
+        setError('Invalid email or password. Please check your credentials and try again.');
+      } else if (err.message?.includes('Email not confirmed')) {
+        setError('Please check your email and click the confirmation link before signing in.');
+      } else {
+        setError(err.message || 'An error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

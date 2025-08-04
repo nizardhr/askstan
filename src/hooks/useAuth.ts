@@ -74,6 +74,14 @@ export const useAuth = () => {
 
       if (error) {
         console.error('Signup error:', error);
+        
+        // Handle specific Supabase errors
+        if (error.message?.includes('rate limit exceeded')) {
+          throw new Error('Too many signup attempts. Please wait a few minutes before trying again.');
+        } else if (error.message?.includes('User already registered')) {
+          throw new Error('An account with this email already exists. Try signing in instead.');
+        }
+        
         throw error;
       }
       
