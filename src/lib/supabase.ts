@@ -160,33 +160,22 @@ export const platformUtils = {
     }
   },
 
-  // Create missing user profile
+  // Fixed profile creation - creates profile directly without relying on getUser()
   async createUserProfile(userId: string): Promise<UserProfile | null> {
     console.log('🔨 [platformUtils] Creating profile for user:', userId);
     
     try {
-      // Get user info from auth.users
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Instead of relying on getUser(), create profile with fallback email
+      // and let the database trigger or later update fix the email
+      const fallbackEmail = `user-${userId}@temp.local`;
       
-      if (userError || !user) {
-        console.error('❌ [platformUtils] Could not get user info:', userError);
-        return null;
-      }
-
-      if (user.id !== userId) {
-        console.error('❌ [platformUtils] User ID mismatch');
-        return null;
-      }
-
-      const email = user.email || user.user_metadata?.email || `user-${userId}@temp.local`;
-      
-      console.log('📧 [platformUtils] Creating profile with email:', email);
+      console.log('📧 [platformUtils] Creating profile with fallback email:', fallbackEmail);
 
       const { data, error } = await supabase
         .from('user_profiles')
         .insert({
           id: userId,
-          email: email,
+          email: fallbackEmail,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -195,6 +184,26 @@ export const platformUtils = {
 
       if (error) {
         console.error('❌ [platformUtils] Error creating profile:', error);
+        
+        // If it's a duplicate key error, try to fetch the existing profile
+        if (error.code === '23505') {
+          console.log('ℹ️ [platformUtils] Profile already exists, fetching it...');
+          try {
+            const { data: existingData, error: fetchError } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('id', userId)
+              .single();
+            
+            if (!fetchError) {
+              console.log('✅ [platformUtils] Retrieved existing profile:', existingData.email);
+              return existingData;
+            }
+          } catch (fetchExistingError) {
+            console.error('❌ [platformUtils] Error fetching existing profile:', fetchExistingError);
+          }
+        }
+        
         return null;
       }
 
