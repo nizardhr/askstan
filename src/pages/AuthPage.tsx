@@ -50,13 +50,15 @@ const AuthPage: React.FC = () => {
       
       // Handle specific error types with user-friendly messages
       if (err.message?.includes('rate limit exceeded')) {
-        setError('Too many signup attempts. Please wait a few minutes before trying again, or try signing in if you already have an account.');
+        setError('Rate limit exceeded. Please wait 5-10 minutes before trying again. If you already have an account, try signing in instead.');
       } else if (err.message?.includes('User already registered')) {
         setError('An account with this email already exists. Try signing in instead.');
       } else if (err.message?.includes('Invalid login credentials')) {
-        setError('Invalid email or password. Please check your credentials and try again.');
+        setError('Invalid email or password. Please check your credentials. If you just signed up, try waiting a few minutes or check your email for confirmation.');
       } else if (err.message?.includes('Email not confirmed')) {
         setError('Please check your email and click the confirmation link before signing in.');
+      } else if (err.message?.includes('signup disabled')) {
+        setError('New signups are temporarily disabled. Please try again later or contact support.');
       } else {
         setError(err.message || 'An error occurred. Please try again.');
       }
