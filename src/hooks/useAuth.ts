@@ -8,36 +8,62 @@ export const useAuth = () => {
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Simple data fetching without timeouts or complex logic
   const fetchUserData = async (userId: string) => {
     try {
       console.log('📊 [useAuth] Fetching data for user:', userId);
 
-      // Fetch profile
-      const { data: profileData } = await supabase
+      // Fetch profile - create if doesn't exist
+      let { data: profileData, error: profileError } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
-      if (profileData) {
-        setProfile(profileData);
-        console.log('✅ [useAuth] Profile loaded:', profileData.email);
-      } else {
-        console.log('ℹ️ [useAuth] No profile found');
+      if (profileError) {
+        console.error('❌ [useAuth] Profile fetch error:', profileError);
         setProfile(null);
+      } else if (!profileData) {
+        console.log('➕ [useAuth] Creating missing profile...');
+        // Create profile if it doesn't exist
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          const { data: newProfile, error: createError } = await supabase
+            .from('user_profiles')
+            .insert({
+              id: userId,
+              email: authUser.email || `user-${userId}@temp.local`,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('❌ [useAuth] Profile creation error:', createError);
+            setProfile(null);
+          } else {
+            console.log('✅ [useAuth] Profile created:', newProfile.email);
+            setProfile(newProfile);
+          }
+        }
+      } else {
+        console.log('✅ [useAuth] Profile loaded:', profileData.email);
+        setProfile(profileData);
       }
 
       // Fetch subscription
-      const { data: subscriptionData } = await supabase
+      const { data: subscriptionData, error: subscriptionError } = await supabase
         .from('user_subscriptions')
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
 
-      if (subscriptionData) {
-        setSubscription(subscriptionData);
+      if (subscriptionError) {
+        console.error('❌ [useAuth] Subscription fetch error:', subscriptionError);
+        setSubscription(null);
+      } else if (subscriptionData) {
         console.log('✅ [useAuth] Subscription loaded:', subscriptionData.status);
+        setSubscription(subscriptionData);
       } else {
         console.log('ℹ️ [useAuth] No subscription found');
         setSubscription(null);
@@ -45,13 +71,19 @@ export const useAuth = () => {
 
     } catch (error) {
       console.error('❌ [useAuth] Error fetching user data:', error);
+      setProfile(null);
+      setSubscription(null);
     }
   };
 
   useEffect(() => {
-    // Get initial session
+    let mounted = true;
+
     const getInitialSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!mounted) return;
+      
       setUser(session?.user ?? null);
       
       if (session?.user) {
@@ -63,9 +95,10 @@ export const useAuth = () => {
 
     getInitialSession();
 
-    // Listen for auth changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mounted) return;
+        
         console.log('🔄 [useAuth] Auth state changed:', event);
         
         setUser(session?.user ?? null);
@@ -82,6 +115,7 @@ export const useAuth = () => {
     );
 
     return () => {
+      mounted = false;
       authSubscription.unsubscribe();
     };
   }, []);

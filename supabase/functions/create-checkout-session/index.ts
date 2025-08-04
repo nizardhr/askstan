@@ -32,17 +32,46 @@ Deno.serve(async (req)=>{
       });
     }
     // Fetch user email from Supabase
-    const { data: profile, error: profileError } = await supabase.from('user_profiles').select('email').eq('id', userId).single();
+    const { data: profile, error: profileError } = await supabase.from('user_profiles').select('email').eq('id', userId).maybeSingle();
     if (profileError || !profile) {
-      return new Response(JSON.stringify({
-        error: 'User profile not found'
-      }), {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        },
-        status: 404
-      });
+      // Create profile if it doesn't exist
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        return new Response(JSON.stringify({
+          error: 'User not authenticated'
+        }), {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          },
+          status: 401
+        });
+      }
+
+      const { data: newProfile, error: createError } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: userId,
+          email: authUser.email || `user-${userId}@temp.local`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select('email')
+        .single();
+
+      if (createError || !newProfile) {
+        return new Response(JSON.stringify({
+          error: 'Failed to create user profile'
+        }), {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          },
+          status: 500
+        });
+      }
+
+      profile = newProfile;
     }
     // Build checkout session config
     const sessionConfig = {

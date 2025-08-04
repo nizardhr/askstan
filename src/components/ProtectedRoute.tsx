@@ -41,12 +41,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           
           if (data?.success) {
             console.log('✅ [ProtectedRoute] Subscription created successfully');
+            await refetchUserData();
           } else {
             console.log('⚠️ [ProtectedRoute] Subscription creation failed:', data);
           }
-          
-          // Refresh user data
-          await refetchUserData();
           
         } catch (error) {
           console.error('❌ [ProtectedRoute] Checkout processing error:', error);
