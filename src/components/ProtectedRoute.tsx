@@ -39,21 +39,24 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       // Process the checkout session
       processStripeCheckout(sessionId).then((success) => {
         console.log('🛡️ [ProtectedRoute] Checkout processing completed:', success);
-        if (success) {
-          setShowSuccessMessage(true);
-          // Clean up URL
-          const url = new URL(window.location.href);
-          url.searchParams.delete('session_id');
-          window.history.replaceState({}, document.title, url.toString());
-          
-          // Hide success message after 3 seconds
-          setTimeout(() => {
-            setShowSuccessMessage(false);
-          }, 3000);
-        }
+        setShowSuccessMessage(true);
+        // Clean up URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('session_id');
+        window.history.replaceState({}, document.title, url.toString());
+        
+        // Hide success message after 3 seconds
+        setTimeout(() => {
+          setShowSuccessMessage(false);
+        }, 3000);
       }).catch((error) => {
         console.error('🛡️ [ProtectedRoute] Checkout processing failed:', error);
-        setCheckoutProcessed(false); // Allow retry
+        // Still show success and clean URL even if processing fails
+        setShowSuccessMessage(true);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('session_id');
+        window.history.replaceState({}, document.title, url.toString());
+        setTimeout(() => setShowSuccessMessage(false), 3000);
       });
     }
   }, [user, location.search, checkoutProcessed, processStripeCheckout]);

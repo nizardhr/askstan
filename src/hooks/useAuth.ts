@@ -16,6 +16,8 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
   const [processingCheckout, setProcessingCheckout] = useState(false);
   const [checkoutProcessed, setCheckoutProcessed] = useState(false);
+  const [fetchAttempts, setFetchAttempts] = useState(0);
+  const MAX_FETCH_ATTEMPTS = 3;
 
   useEffect(() => {
     // Get initial session
@@ -103,53 +105,66 @@ export const useAuth = () => {
 
   const fetchUserData = async (userId: string, source: string = 'unknown') => {
     // Prevent infinite loops - but allow checkout_success to override
-    if (isFetchingUserData && lastFetchedUserId === userId && source !== 'checkout_success') {
+    if (isFetchingUserData && lastFetchedUserId === userId && source !== 'checkout_success' && fetchAttempts < MAX_FETCH_ATTEMPTS) {
       console.log('⏭️ [useAuth] Skipping fetch - already in progress for user:', userId);
+      return;
+    }
+    
+    // Prevent too many attempts
+    if (fetchAttempts >= MAX_FETCH_ATTEMPTS && source !== 'checkout_success') {
+      console.log('🛑 [useAuth] Max fetch attempts reached, stopping');
+      setLoading(false);
       return;
     }
     
     try {
       isFetchingUserData = true;
       lastFetchedUserId = userId;
+      setFetchAttempts(prev => prev + 1);
       console.log('📊 [useAuth] Fetching user data for:', userId, 'source:', source);
       
       // Fetch user profile with better error handling
       console.log('👤 [useAuth] Fetching user profile...');
       
+      // Add timeout to profile fetch
+      const profilePromise = platformUtils.getUserProfile(userId);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+      );
+      
       try {
-        const profileData = await platformUtils.getUserProfile(userId);
-        if (profileData) {
-          setProfile(profileData);
-          console.log('✅ [useAuth] Profile loaded successfully');
-        } else {
-          console.warn('⚠️ [useAuth] No profile found');
-          setProfile(null);
-        }
+        const profileData = await Promise.race([profilePromise, timeoutPromise]);
+        setProfile(profileData);
+        console.log('✅ [useAuth] Profile loaded:', profileData ? 'found' : 'not found');
       } catch (profileError) {
-        console.error('❌ [useAuth] Profile fetch/create failed:', profileError);
+        console.error('❌ [useAuth] Profile fetch failed:', profileError);
         setProfile(null);
       }
 
       // Fetch user subscription with better error handling
       console.log('💳 [useAuth] Fetching user subscription...');
       
+      const subscriptionPromise = platformUtils.getUserSubscription(userId);
+      const subTimeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Subscription fetch timeout')), 5000)
+      );
+      
       try {
-        const subscriptionData = await platformUtils.getUserSubscription(userId);
+        const subscriptionData = await Promise.race([subscriptionPromise, subTimeoutPromise]);
         setSubscription(subscriptionData);
-        
-        if (subscriptionData) {
-          console.log('✅ [useAuth] Subscription loaded:', subscriptionData.status);
-        } else {
-          console.log('ℹ️ [useAuth] No subscription found (expected for new users)');
-        }
+        console.log('✅ [useAuth] Subscription loaded:', subscriptionData ? subscriptionData.status : 'none');
       } catch (subscriptionError) {
         console.error('❌ [useAuth] Subscription fetch failed:', subscriptionError);
         setSubscription(null);
       }
+      
+      // Reset fetch attempts on successful completion
+      setFetchAttempts(0);
     } catch (error) {
       console.error('💥 [useAuth] Error fetching user data:', error);
     } finally {
       isFetchingUserData = false;
+      setLoading(false);
     }
   };
 
