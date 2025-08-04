@@ -27,38 +27,45 @@ const Dashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(location.search);
-    const sessionId = urlParams.get('session_id');
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session_id');
 
-    const validateCheckoutSession = async () => {
-      if (!sessionId || !user) return;
-
-      try {
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_EDGE_URL}/validate-checkout-session`, {
+  const validateSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
+        {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, userId: user.id })
-        });
-
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-          console.log('Subscription validated successfully:', data.subscriptionStatus);
-          setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 5000);
-        } else {
-          console.error('Subscription validation failed:', data.error);
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${user?.access_token}` // Optional if needed
+          },
+          body: JSON.stringify({ session_id: sessionId })
         }
-      } catch (error) {
-        console.error('Error validating checkout session:', error);
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('Stripe session validated successfully!');
+        // Optional: update user profile context with subscription active flag
+      } else {
+        console.error('Stripe session validation failed:', result.message);
       }
-
+    } catch (error) {
+      console.error('Error validating Stripe session:', error);
+    } finally {
+      // Clean URL to prevent re-processing
       urlParams.delete('session_id');
-      window.history.replaceState({}, document.title, `${location.pathname}`);
-    };
+      window.history.replaceState({}, document.title, `${window.location.pathname}`);
+    }
+  };
 
-    validateCheckoutSession();
-  }, [location.search, user]);
+  if (sessionId && user) {
+    console.log('Validating Stripe session:', sessionId);
+    validateSession(sessionId);
+  }
+}, [user]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
