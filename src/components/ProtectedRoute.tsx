@@ -71,7 +71,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       initialLoad
     };
     
-    console.log('🛡️ [ProtectedRoute] Route protection check:', debugInfo);
+    // Only log when there are significant changes
+    if (loading || processingCheckout || !user || !profile) {
+      console.log('🛡️ [ProtectedRoute] Route protection check:', debugInfo);
+    }
     
     if (loading || processingCheckout) {
       console.log('⏳ [ProtectedRoute] Loading user data...');
@@ -106,7 +109,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // Redirect to login if no user
   if (!user) {
     console.log('🛡️ [ProtectedRoute] No authenticated user, redirecting to login');
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
   // If profile is required but missing, show a profile creation prompt
@@ -139,7 +142,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       const isInTrial = subscription?.status === 'trialing';
       const isPastDue = subscription?.status === 'past_due';
       
-      if (!isInTrial && !isPastDue && !hasCompletedOnboarding) {
+      if (!isInTrial && !isPastDue) {
         console.log('🛡️ [ProtectedRoute] No active subscription, redirecting to pricing');
         return <Navigate to="/subscribe" state={{ from: location }} replace />;
       }
@@ -183,7 +186,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   // All checks passed, render the protected content
-  console.log('✅ [ProtectedRoute] All checks passed, rendering protected content');
+  if (!loading && !processingCheckout) {
+    console.log('✅ [ProtectedRoute] All checks passed, rendering protected content');
+  }
   return <>{children}</>;
 };
 

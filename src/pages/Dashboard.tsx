@@ -27,16 +27,10 @@ const Dashboard: React.FC = () => {
 
   // Add comprehensive logging
   useEffect(() => {
-    console.log('🔄 Dashboard Component Mounted');
-    console.log('📍 Current URL:', window.location.href);
-    console.log('🔗 Location Search:', location.search);
-    console.log('👤 User Object:', user);
-    console.log('📋 Profile Object:', profile);
-    console.log('⚡ Environment Check:', {
-      VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Present' : '❌ Missing',
-      NODE_ENV: import.meta.env.NODE_ENV,
-    });
+    // Only log on initial mount, not on every re-render
+    if (user && profile) {
+      console.log('🔄 Dashboard Component Ready - User:', user.id, 'Profile:', profile.email);
+    }
   }, []);
 
   const validateSession = async (sessionId: string) => {
@@ -137,15 +131,15 @@ const Dashboard: React.FC = () => {
     const urlParams = new URLSearchParams(location.search);
     const sessionId = urlParams.get('session_id');
 
-    console.log('🔄 [Dashboard] useEffect triggered');
-    console.log('📍 [Dashboard] URL params:', location.search);
-    console.log('🎫 [Dashboard] session_id:', sessionId);
-    console.log('👤 [Dashboard] user exists:', !!user);
-    console.log('📋 [Dashboard] profile exists:', !!profile);
-    console.log('⏳ [Dashboard] currently validating:', validatingSession);
+    // Only log when there's a session_id to process
+    if (sessionId) {
+      console.log('🔄 [Dashboard] useEffect triggered with session_id:', sessionId);
+      console.log('👤 [Dashboard] user exists:', !!user);
+      console.log('📋 [Dashboard] profile exists:', !!profile);
+      console.log('⏳ [Dashboard] currently validating:', validatingSession);
+    }
 
     if (!sessionId) {
-      console.log('ℹ️ [Dashboard] No session_id in URL, skipping validation.');
       return;
     }
 

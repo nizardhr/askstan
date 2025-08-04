@@ -159,24 +159,23 @@ export const platformUtils = {
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          // No rows returned - profile doesn't exist
-          console.log('ℹ️ [platformUtils] Profile not found, will create one');
-          return null;
-        } else {
-          console.error('❌ [platformUtils] Error fetching user profile:', error);
-          throw error;
-        }
+        console.error('❌ [platformUtils] Error fetching user profile:', error);
+        return null;
+      }
+
+      if (!data) {
+        console.log('ℹ️ [platformUtils] Profile not found, will create one');
+        return null;
       }
 
       console.log('✅ [platformUtils] Profile found:', data.email);
       return data;
     } catch (error) {
       console.error('💥 [platformUtils] Exception in getUserProfile:', error);
-      throw error;
+      return null;
     }
   },
 

@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, UserProfile, UserSubscription, platformUtils } from '../lib/supabase';
 
+// Prevent infinite loops by tracking fetch operations
+let isFetchingUserData = false;
+let lastFetchedUserId: string | null = null;
+
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -20,8 +24,8 @@ export const useAuth = () => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        console.log('🔄 [useAuth] Auth state changed: SIGNED_IN session exists');
-        await fetchUserData(session.user.id);
+        console.log('🔄 [useAuth] Initial session found for user:', session.user.id);
+        await fetchUserData(session.user.id, 'initial');
         
         // Check for session_id parameter from Stripe checkout
         const urlParams = new URLSearchParams(window.location.search);
@@ -41,12 +45,19 @@ export const useAuth = () => {
     // Listen for auth changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔄 [useAuth] Auth state changed:', event, session ? 'session exists' : 'no session');
+        console.log('🔄 [useAuth] Auth state changed:', event);
+        
+        // Ignore certain events that don't require data refetch
+        if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+          console.log('ℹ️ [useAuth] Ignoring', event, 'event to prevent infinite loops');
+          return;
+        }
+        
         setUser(session?.user ?? null);
         
         if (session?.user) {
           console.log('📋 [useAuth] Auth change - fetching user data for:', session.user.id);
-          await fetchUserData(session.user.id);
+          await fetchUserData(session.user.id, event);
           // Update user activity
           await platformUtils.updateUserActivity(session.user.id);
         } else {
@@ -70,13 +81,40 @@ export const useAuth = () => {
       setProcessingCheckout(true);
       console.log('🔄 [useAuth] Processing Stripe checkout session:', sessionId);
       
-      const success = await platformUtils.processStripeCheckoutSession(sessionId);
+      // Call the validate-checkout-session function instead
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No authenticated session');
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'x-requested-with': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ 
+          sessionId, 
+          userId: user?.id 
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const success = result.success;
       
       if (success) {
         console.log('✅ [useAuth] Checkout processed successfully, refreshing user data...');
         // Refresh user data to get updated subscription
         if (user) {
-          await fetchUserData(user.id);
+          await fetchUserData(user.id, 'checkout_success');
         }
         
         // Clean up URL to remove session_id parameter
@@ -84,7 +122,7 @@ export const useAuth = () => {
         url.searchParams.delete('session_id');
         window.history.replaceState({}, document.title, url.toString());
       } else {
-        console.error('❌ [useAuth] Checkout processing failed');
+        console.error('❌ [useAuth] Checkout processing failed:', result.error);
       }
     } catch (error) {
       console.error('💥 [useAuth] Error processing checkout:', error);
@@ -93,9 +131,17 @@ export const useAuth = () => {
     }
   };
 
-  const fetchUserData = async (userId: string) => {
+  const fetchUserData = async (userId: string, source: string = 'unknown') => {
+    // Prevent infinite loops
+    if (isFetchingUserData && lastFetchedUserId === userId) {
+      console.log('⏭️ [useAuth] Skipping fetch - already in progress for user:', userId);
+      return;
+    }
+    
     try {
-      console.log('📊 [useAuth] Fetching user data for:', userId);
+      isFetchingUserData = true;
+      lastFetchedUserId = userId;
+      console.log('📊 [useAuth] Fetching user data for:', userId, 'source:', source);
       
       // Fetch user profile with better error handling
       console.log('👤 [useAuth] Fetching user profile...');
@@ -143,7 +189,8 @@ export const useAuth = () => {
     } catch (error) {
       console.error('💥 [useAuth] Error fetching user data:', error);
       // Don't reset profile/subscription on error to prevent infinite loops
-      setSubscription(null);
+    } finally {
+      isFetchingUserData = false;
     }
   };
 
@@ -177,7 +224,7 @@ export const useAuth = () => {
       // Wait a moment for the database trigger to complete, then fetch user data
       if (data.user) {
         setTimeout(() => {
-          fetchUserData(data.user!.id);
+          fetchUserData(data.user!.id, 'signup');
         }, 2000); // Increased timeout to allow database operations to complete
       }
       
@@ -207,8 +254,7 @@ export const useAuth = () => {
       // Update user activity on successful login
       if (data.user) {
         await platformUtils.updateUserActivity(data.user.id);
-        // Ensure user data is fetched
-        await fetchUserData(data.user.id);
+        // Don't fetch here - let the auth state change handle it
       }
       
       return data;
@@ -220,6 +266,11 @@ export const useAuth = () => {
 
   const signOut = async () => {
     console.log('👋 [useAuth] Signing out...');
+    // Clear state immediately
+    setUser(null);
+    setProfile(null);
+    setSubscription(null);
+    
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     console.log('✅ [useAuth] Signed out successfully');
@@ -326,7 +377,7 @@ export const useAuth = () => {
     getTrialEndDate,
     getPlanDisplayName,
     getNextBillingAmount,
-    refetchUserData: () => user ? fetchUserData(user.id) : Promise.resolve(),
+    refetchUserData: () => user ? fetchUserData(user.id, 'manual_refetch') : Promise.resolve(),
     processStripeCheckout, // Expose for manual processing if needed
   };
 };
