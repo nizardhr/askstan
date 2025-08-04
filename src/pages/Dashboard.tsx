@@ -3,6 +3,31 @@ import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, User, Settings, Send, MessageCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session_id');
+
+  if (sessionId) {
+    console.log('User returned from Stripe Checkout with session_id:', sessionId);
+
+    // TODO: Call your backend to verify the session
+    // Example API call to confirm payment (pseudo-code)
+    /*
+    fetch(`/api/verify-checkout-session?session_id=${sessionId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          // Success logic here (e.g., update UI, show success message)
+        }
+      });
+    */
+
+    // Clean URL (remove session_id from query params)
+    urlParams.delete('session_id');
+    window.history.replaceState({}, document.title, `${window.location.pathname}`);
+  }
+}, []);
+
 const Dashboard: React.FC = () => {
   const { signOut, user, profile } = useAuth();
   const navigate = useNavigate();
