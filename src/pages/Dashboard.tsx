@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, User, Settings, Send, MessageCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 const Dashboard: React.FC = () => {
   const { signOut, user, profile } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [chatbotLoaded, setChatbotLoaded] = useState(false);
@@ -23,31 +22,8 @@ const Dashboard: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [validatingSession, setValidatingSession] = useState(false);
 
-  const handleLogout = async () => {
-    try {
-      await signOut();
-      navigate('/', { replace: true });
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
-
-  useEffect(() => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const sessionId = urlParams.get('session_id');
-
-  console.log('[Dashboard] URL params:', window.location.search);
-  console.log('[Dashboard] session_id:', sessionId);
-  console.log('[Dashboard] user:', user);
-  console.log('[Dashboard] profile:', profile);
-
-  if (!sessionId || !user || !profile) {
-    console.log('[Dashboard] Missing sessionId/user/profile, skipping validation.');
-    return;
-  }
-
   const validateSession = async (sessionId: string) => {
-    console.log('[Dashboard] Starting Stripe session validation for:', sessionId);
+    console.log('[Dashboard] Validating Stripe session:', sessionId);
     setValidatingSession(true);
     try {
       const response = await fetch(
@@ -56,9 +32,9 @@ const Dashboard: React.FC = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${user.access_token}`, // adjust if needed
+            Authorization: `Bearer ${user?.access_token}`,
           },
-          body: JSON.stringify({ sessionId, userId: profile.id }),
+          body: JSON.stringify({ sessionId, userId: profile?.id }),
         }
       );
 
@@ -75,17 +51,46 @@ const Dashboard: React.FC = () => {
       console.error('[Dashboard] Error validating Stripe session:', error);
     } finally {
       // Clean URL
+      const urlParams = new URLSearchParams(window.location.search);
       urlParams.delete('session_id');
-      const newUrl =
-        window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
-      console.log('[Dashboard] Cleaning URL, new URL:', newUrl);
+      const newUrl = window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
+      console.log('[Dashboard] Cleaning URL to:', newUrl);
       window.history.replaceState({}, document.title, newUrl);
       setValidatingSession(false);
     }
   };
 
-  validateSession(sessionId);
-}, [user, profile]);
+  // Persistent check for user/profile readiness and session_id in URL
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session_id');
+
+      if (!sessionId) return; // No session id
+
+      console.log('[Dashboard] Checking readiness for session validation...');
+      console.log('[Dashboard] user:', user);
+      console.log('[Dashboard] profile:', profile);
+
+      if (user && profile && !validatingSession) {
+        console.log('[Dashboard] All data ready. Starting session validation...');
+        validateSession(sessionId);
+        clearInterval(interval); // Stop interval after validation starts
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [user, profile, validatingSession]);
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/', { replace: true });
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
@@ -214,6 +219,23 @@ const Dashboard: React.FC = () => {
           </h2>
           <p className="text-gray-600">Your personal AI companion is ready to help. Start a conversation below.</p>
         </div>
+
+        {/* DEBUG Button to manually trigger validation */}
+        <button
+          onClick={() => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session_id');
+            if (sessionId && user && profile) {
+              console.log('[Manual Debug] Triggering session validation...');
+              validateSession(sessionId);
+            } else {
+              console.warn('[Manual Debug] Missing data:', { sessionId, user, profile });
+            }
+          }}
+          className="mb-4 bg-red-500 text-white px-4 py-2 rounded-lg"
+        >
+          Debug Validate Session
+        </button>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 h-[600px] flex flex-col">
           <div className="p-4 border-b border-gray-200">
