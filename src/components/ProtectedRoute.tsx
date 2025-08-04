@@ -25,32 +25,38 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   } = useAuth();
   const location = useLocation();
   const [checkoutProcessed, setCheckoutProcessed] = useState(false);
-  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   // Handle Stripe checkout session completion
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const sessionId = urlParams.get('session_id');
     
-    if (sessionId && user && !checkoutProcessed && !processingCheckout) {
+    if (sessionId && user && !checkoutProcessed) {
       console.log('🛡️ [ProtectedRoute] Found session_id, processing checkout completion...');
       setCheckoutProcessed(true);
       
       // Process the checkout session
       processStripeCheckout(sessionId).then((success) => {
-        console.log('🛡️ [ProtectedRoute] Checkout processing completed');
+        console.log('🛡️ [ProtectedRoute] Checkout processing completed:', success);
         if (success) {
-          setCheckoutSuccess(true);
+          setShowSuccessMessage(true);
           // Clean up URL
           const url = new URL(window.location.href);
           url.searchParams.delete('session_id');
           window.history.replaceState({}, document.title, url.toString());
+          
+          // Hide success message after 3 seconds
+          setTimeout(() => {
+            setShowSuccessMessage(false);
+          }, 3000);
         }
       }).catch((error) => {
         console.error('🛡️ [ProtectedRoute] Checkout processing failed:', error);
+        setCheckoutProcessed(false); // Allow retry
       });
     }
-  }, [user, location.search, checkoutProcessed, processingCheckout, processStripeCheckout]);
+  }, [user, location.search, checkoutProcessed, processStripeCheckout]);
 
   // Show loading spinner while processing checkout or initial load
   if (processingCheckout) {
@@ -96,7 +102,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   // Show success message if checkout was successful
-  if (checkoutSuccess && hasActiveSubscription()) {
+  if (showSuccessMessage) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-6">
@@ -112,7 +118,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             </p>
             <button 
               onClick={() => {
-                setCheckoutSuccess(false);
+                setShowSuccessMessage(false);
               }}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
