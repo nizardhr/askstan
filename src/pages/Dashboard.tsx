@@ -33,49 +33,59 @@ const Dashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const sessionId = urlParams.get('session_id');
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session_id');
 
-    if (!sessionId || !user || !profile) return;
+  console.log('[Dashboard] URL params:', window.location.search);
+  console.log('[Dashboard] session_id:', sessionId);
+  console.log('[Dashboard] user:', user);
+  console.log('[Dashboard] profile:', profile);
 
-    const validateSession = async (sessionId: string) => {
-      setValidatingSession(true);
-      try {
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${user.access_token}`, // if applicable
-            },
-            body: JSON.stringify({ sessionId, userId: profile.id }),
-          }
-        );
+  if (!sessionId || !user || !profile) {
+    console.log('[Dashboard] Missing sessionId/user/profile, skipping validation.');
+    return;
+  }
 
-        const result = await response.json();
-
-        if (result.success) {
-          console.log('Stripe session validated successfully!');
-          setShowSuccess(true);
-        } else {
-          console.error('Stripe session validation failed:', result.error);
+  const validateSession = async (sessionId: string) => {
+    console.log('[Dashboard] Starting Stripe session validation for:', sessionId);
+    setValidatingSession(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${user.access_token}`, // adjust if needed
+          },
+          body: JSON.stringify({ sessionId, userId: profile.id }),
         }
-      } catch (error) {
-        console.error('Error validating Stripe session:', error);
-      } finally {
-        // Remove session_id query param to avoid reload loop
-        urlParams.delete('session_id');
-        const newUrl =
-          window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
-        window.history.replaceState({}, document.title, newUrl);
-        setValidatingSession(false);
+      );
+
+      const result = await response.json();
+      console.log('[Dashboard] Validation API response:', result);
+
+      if (result.success) {
+        console.log('[Dashboard] Stripe session validated successfully!');
+        setShowSuccess(true);
+      } else {
+        console.error('[Dashboard] Stripe session validation failed:', result.error);
       }
-    };
+    } catch (error) {
+      console.error('[Dashboard] Error validating Stripe session:', error);
+    } finally {
+      // Clean URL
+      urlParams.delete('session_id');
+      const newUrl =
+        window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
+      console.log('[Dashboard] Cleaning URL, new URL:', newUrl);
+      window.history.replaceState({}, document.title, newUrl);
+      setValidatingSession(false);
+    }
+  };
 
-    validateSession(sessionId);
-  }, [user, profile]);
-
+  validateSession(sessionId);
+}, [user, profile]);
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
