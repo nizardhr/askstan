@@ -162,14 +162,6 @@ const Dashboard: React.FC = () => {
     };
   }, [user]);
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ... rest of your component remains unchanged ... */}
-    </div>
-  );
-};
-
-export default Dashboard;
 
 
   return (
