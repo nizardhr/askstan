@@ -97,31 +97,52 @@ export const useAuth = () => {
     try {
       console.log('📊 [useAuth] Fetching user data for:', userId);
       
-      // Fetch user profile using platform utils (no timeout anymore)
+      // Fetch user profile with better error handling
       console.log('👤 [useAuth] Fetching user profile...');
-      const profileData = await platformUtils.getUserProfile(userId);
-      if (profileData) {
-        setProfile(profileData);
-        console.log('✅ [useAuth] Profile loaded successfully');
-      } else {
-        console.warn('⚠️ [useAuth] No profile could be created/found for user:', userId);
-        // Don't set profile to null, keep existing state for now
+      
+      try {
+        const profileData = await platformUtils.getUserProfile(userId);
+        if (profileData) {
+          setProfile(profileData);
+          console.log('✅ [useAuth] Profile loaded successfully');
+        } else {
+          console.warn('⚠️ [useAuth] No profile found, creating one...');
+          const newProfile = await platformUtils.createUserProfile(userId);
+          if (newProfile) {
+            setProfile(newProfile);
+            console.log('✅ [useAuth] Profile created successfully');
+          }
+        }
+      } catch (profileError) {
+        console.error('❌ [useAuth] Profile fetch/create failed:', profileError);
+        // Set a minimal profile to prevent infinite loops
+        setProfile({
+          id: userId,
+          email: user?.email || 'user@example.com',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
       }
 
-      // Fetch user subscription using platform utils (no timeout anymore)
+      // Fetch user subscription with better error handling
       console.log('💳 [useAuth] Fetching user subscription...');
-      const subscriptionData = await platformUtils.getUserSubscription(userId);
-      setSubscription(subscriptionData); // Will be null for new users without subscription, which is expected
       
-      if (subscriptionData) {
-        console.log('✅ [useAuth] Subscription loaded:', subscriptionData.status);
-      } else {
-        console.log('ℹ️ [useAuth] No subscription found (expected for new users)');
+      try {
+        const subscriptionData = await platformUtils.getUserSubscription(userId);
+        setSubscription(subscriptionData);
+        
+        if (subscriptionData) {
+          console.log('✅ [useAuth] Subscription loaded:', subscriptionData.status);
+        } else {
+          console.log('ℹ️ [useAuth] No subscription found (expected for new users)');
+        }
+      } catch (subscriptionError) {
+        console.error('❌ [useAuth] Subscription fetch failed:', subscriptionError);
+        setSubscription(null);
       }
     } catch (error) {
       console.error('💥 [useAuth] Error fetching user data:', error);
-      // Don't reset profile to null on subscription fetch error
-      // New users won't have subscriptions, so this is expected
+      // Don't reset profile/subscription on error to prevent infinite loops
       setSubscription(null);
     }
   };

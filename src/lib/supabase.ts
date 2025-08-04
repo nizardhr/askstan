@@ -159,25 +159,24 @@ export const platformUtils = {
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
-        .maybeSingle();
+        .single();
 
       if (error) {
-        console.error('❌ [platformUtils] Error fetching user profile:', error);
-        // Try to create profile if it doesn't exist
-        return await this.createUserProfile(userId);
-      }
-
-      if (!data) {
-        console.log('⚠️ [platformUtils] No profile found, attempting to create one...');
-        return await this.createUserProfile(userId);
+        if (error.code === 'PGRST116') {
+          // No rows returned - profile doesn't exist
+          console.log('ℹ️ [platformUtils] Profile not found, will create one');
+          return null;
+        } else {
+          console.error('❌ [platformUtils] Error fetching user profile:', error);
+          throw error;
+        }
       }
 
       console.log('✅ [platformUtils] Profile found:', data.email);
       return data;
     } catch (error) {
       console.error('💥 [platformUtils] Exception in getUserProfile:', error);
-      // Fallback to profile creation
-      return await this.createUserProfile(userId);
+      throw error;
     }
   },
 
