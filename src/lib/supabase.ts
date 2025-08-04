@@ -159,15 +159,16 @@ export const platformUtils = {
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          console.log('ℹ️ [platformUtils] Profile not found, will create one');
-          return await this.createUserProfile(userId);
-        }
         console.error('❌ [platformUtils] Error fetching user profile:', error);
         return null;
+      }
+
+      if (!data) {
+        console.log('ℹ️ [platformUtils] Profile not found, will create one');
+        return await this.createUserProfile(userId);
       }
 
       console.log('✅ [platformUtils] Profile found:', data?.email || 'no email');

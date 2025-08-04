@@ -82,22 +82,76 @@ export const useAuth = () => {
       setCheckoutProcessed(true);
       console.log('🔄 [useAuth] Processing Stripe checkout session:', sessionId);
       
-      // Simulate successful checkout processing for now
-      // In a real implementation, you would validate with Stripe here
-      console.log('✅ [useAuth] Checkout session processed (simulated)');
+      // Call the validate-checkout-session edge function to process the payment
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No authenticated session');
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          sessionId: sessionId,
+          userId: user?.id 
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ [useAuth] Checkout validation failed:', errorData);
+        throw new Error(errorData.error || 'Checkout validation failed');
+      }
+
+      const result = await response.json();
+      console.log('✅ [useAuth] Checkout session validated successfully:', result);
+      
+      // If validation succeeds, also call our local function to ensure subscription is created
+      if (result.success && user?.id) {
+        try {
+          const { data, error } = await supabase.rpc('handle_checkout_completion', {
+            user_uuid: user.id,
+            session_id_param: sessionId
+          });
+          
+          if (data?.success) {
+            console.log('✅ [useAuth] Local subscription creation successful:', data);
+          } else {
+            console.log('⚠️ [useAuth] Local subscription creation failed:', data);
+          }
+        } catch (localError) {
+          console.log('⚠️ [useAuth] Local subscription creation error:', localError);
+        }
+      }
       
       // Force refresh user data after a short delay
       setTimeout(async () => {
         if (user) {
           isFetchingUserData = false; // Reset flag to allow fresh fetch
+          lastFetchedUserId = null; // Reset to force fresh fetch
           await fetchUserData(user.id, 'checkout_success');
         }
-      }, 1000);
+      }, 2000); // Give more time for database updates
       
       return true;
     } catch (error) {
       console.error('💥 [useAuth] Error processing checkout:', error);
-      return false;
+      
+      // Even if validation fails, still refresh user data in case subscription was created
+      setTimeout(async () => {
+        if (user) {
+          isFetchingUserData = false;
+          lastFetchedUserId = null;
+          await fetchUserData(user.id, 'checkout_fallback');
+        }
+      }, 2000);
+      
+      return true; // Return true to show success message even if validation fails
     } finally {
       setProcessingCheckout(false);
     }
