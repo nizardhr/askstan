@@ -36,18 +36,16 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       console.log('🛡️ [ProtectedRoute] Found session_id, processing checkout completion...');
       setCheckoutProcessed(true);
       
+      // Clean up URL immediately to prevent reprocessing
+      const url = new URL(window.location.href);
+      url.searchParams.delete('session_id');
+      window.history.replaceState({}, document.title, url.toString());
+      
       // Process the checkout session
       processStripeCheckout(sessionId).then((success) => {
         console.log('🛡️ [ProtectedRoute] Checkout processing completed:', success);
-        // Clean up URL
-        const url = new URL(window.location.href);
-        url.searchParams.delete('session_id');
-        window.history.replaceState({}, document.title, url.toString());
       }).catch((error) => {
         console.error('🛡️ [ProtectedRoute] Checkout processing failed:', error);
-        const url = new URL(window.location.href);
-        url.searchParams.delete('session_id');
-        window.history.replaceState({}, document.title, url.toString());
       });
     }
   }, [user, location.search, checkoutProcessed, processStripeCheckout]);

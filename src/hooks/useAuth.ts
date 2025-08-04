@@ -83,7 +83,7 @@ export const useAuth = () => {
       console.log('🔄 [useAuth] Processing Stripe checkout session:', sessionId);
       
       // Call local function to create subscription
-      if (result.success && user?.id) {
+      if (user?.id) {
         try {
           const { data, error } = await supabase.rpc('handle_checkout_completion', {
             user_uuid: user.id,
@@ -151,14 +151,8 @@ export const useAuth = () => {
       // Fetch user profile with better error handling
       console.log('👤 [useAuth] Fetching user profile...');
       
-      // Add timeout to profile fetch
-      const profilePromise = platformUtils.getUserProfile(userId);
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
-      );
-      
       try {
-        const profileData = await Promise.race([profilePromise, timeoutPromise]);
+        const profileData = await platformUtils.getUserProfile(userId);
         setProfile(profileData);
         console.log('✅ [useAuth] Profile loaded:', profileData ? 'found' : 'not found');
       } catch (profileError) {
@@ -169,13 +163,8 @@ export const useAuth = () => {
       // Fetch user subscription with better error handling
       console.log('💳 [useAuth] Fetching user subscription...');
       
-      const subscriptionPromise = platformUtils.getUserSubscription(userId);
-      const subTimeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Subscription fetch timeout')), 5000)
-      );
-      
       try {
-        const subscriptionData = await Promise.race([subscriptionPromise, subTimeoutPromise]);
+        const subscriptionData = await platformUtils.getUserSubscription(userId);
         setSubscription(subscriptionData);
         console.log('✅ [useAuth] Subscription loaded:', subscriptionData ? subscriptionData.status : 'none');
       } catch (subscriptionError) {
