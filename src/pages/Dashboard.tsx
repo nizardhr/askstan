@@ -40,7 +40,7 @@ const Dashboard: React.FC = () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${user?.access_token}` // Optional if needed
           },
-          body: JSON.stringify({ session_id: sessionId })
+          body: JSON.stringify({ session_id: sessionId, userId: user.id })
         }
       );
 
