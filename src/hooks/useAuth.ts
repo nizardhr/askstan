@@ -50,7 +50,12 @@ export const useAuth = () => {
     try {
       // Fetch user profile using platform utils
       const profileData = await platformUtils.getUserProfile(userId);
-      setProfile(profileData);
+      if (profileData) {
+        setProfile(profileData);
+      } else {
+        console.warn('No profile found for user:', userId);
+        // Don't set profile to null, keep existing state
+      }
 
       // Fetch user subscription using platform utils
       const subscriptionData = await platformUtils.getUserSubscription(userId);
@@ -86,6 +91,13 @@ export const useAuth = () => {
         throw error;
       }
       
+      // Wait a moment for the database trigger to complete
+      if (data.user) {
+        setTimeout(() => {
+          fetchUserData(data.user!.id);
+        }, 1000);
+      }
+      
       return data;
     } catch (error) {
       console.error('Signup failed:', error);
@@ -93,30 +105,30 @@ export const useAuth = () => {
     }
   };
 
-  const signUpOld = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (error) throw error;
-    return data;
-  };
-
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) throw error;
-    
-    // Update user activity on successful login
-    if (data.user) {
-      await platformUtils.updateUserActivity(data.user.id);
+      if (error) {
+        console.error('SignIn error:', error);
+        throw error;
+      }
+      
+      // Update user activity on successful login
+      if (data.user) {
+        await platformUtils.updateUserActivity(data.user.id);
+        // Ensure user data is fetched
+        await fetchUserData(data.user.id);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('SignIn failed:', error);
+      throw error;
     }
-    
-    return data;
   };
 
   const signOut = async () => {
