@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Mail, ArrowLeft, Loader, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import RateLimitNotice from '../components/RateLimitNotice';
 
 const AuthPage: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -12,6 +13,8 @@ const AuthPage: React.FC = () => {
   const [error, setError] = useState('');
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [showRateLimit, setShowRateLimit] = useState(false);
+  const [retryLoading, setRetryLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, signUp, resetPassword } = useAuth();
@@ -50,7 +53,8 @@ const AuthPage: React.FC = () => {
       
       // Handle specific error types with user-friendly messages
       if (err.message?.includes('rate limit exceeded')) {
-        setError('Rate limit exceeded. Please wait 5-10 minutes before trying again. If you already have an account, try signing in instead.');
+        setShowRateLimit(true);
+        setError('');
       } else if (err.message?.includes('User already registered')) {
         setError('An account with this email already exists. Try signing in instead.');
       } else if (err.message?.includes('Invalid login credentials')) {
@@ -65,6 +69,17 @@ const AuthPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRetryAfterRateLimit = async () => {
+    setRetryLoading(true);
+    setShowRateLimit(false);
+    setError('');
+    
+    // Wait a moment then allow user to try again
+    setTimeout(() => {
+      setRetryLoading(false);
+    }, 1000);
   };
 
   const handleForgotPassword = async () => {
@@ -163,6 +178,13 @@ const AuthPage: React.FC = () => {
           </p>
         </div>
 
+        {showRateLimit && (
+          <RateLimitNotice 
+            onRetry={handleRetryAfterRateLimit}
+            isRetrying={retryLoading}
+          />
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
@@ -178,7 +200,7 @@ const AuthPage: React.FC = () => {
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 placeholder="your@email.com"
                 required
-                disabled={loading || resetLoading}
+                disabled={loading || resetLoading || showRateLimit}
               />
             </div>
           </div>
@@ -195,7 +217,7 @@ const AuthPage: React.FC = () => {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               placeholder={isLogin ? "••••••••" : "Minimum 6 characters"}
               required
-              disabled={loading || resetLoading}
+              disabled={loading || resetLoading || showRateLimit}
               minLength={6}
             />
           </div>
@@ -213,7 +235,7 @@ const AuthPage: React.FC = () => {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 placeholder="••••••••"
                 required
-                disabled={loading || resetLoading}
+                disabled={loading || resetLoading || showRateLimit}
                 minLength={6}
               />
             </div>
@@ -229,7 +251,7 @@ const AuthPage: React.FC = () => {
           <button
             type="submit"
             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transform hover:scale-[1.02] transition-all duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center"
-            disabled={loading || resetLoading}
+            disabled={loading || resetLoading || showRateLimit}
           >
             {loading ? (
               <>
