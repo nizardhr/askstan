@@ -13,11 +13,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export type UserProfile = {
   id: string;
   email: string;
-  name?: string;
+  full_name?: string;
   avatar_url?: string;
-  subscription_status?: string;
-  stripe_customer_id?: string;
-  stripe_subscription_id?: string;
+  timezone?: string;
+  onboarding_completed?: boolean;
+  last_active_at?: string;
+  preferences?: Record<string, any>;
   created_at: string;
   updated_at: string;
 };
@@ -28,13 +29,14 @@ export type UserSubscription = {
   stripe_customer_id: string;
   stripe_subscription_id: string;
   stripe_price_id: string;
-  status: 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid';
+  status: 'active' | 'inactive' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'incomplete' | 'incomplete_expired';
   plan_type: 'monthly' | 'yearly';
   current_period_start: string;
   current_period_end: string;
+  cancel_at_period_end?: boolean;
+  canceled_at?: string;
   trial_start?: string;
   trial_end?: string;
-  canceled_at?: string;
   created_at: string;
   updated_at: string;
 };
@@ -42,11 +44,14 @@ export type UserSubscription = {
 export type BillingHistory = {
   id: string;
   user_id: string;
-  stripe_invoice_id: string;
+  subscription_id?: string;
+  stripe_invoice_id?: string;
+  stripe_payment_intent_id?: string;
   amount: number;
   currency: string;
-  status: 'pending' | 'paid' | 'failed' | 'refunded';
+  status: 'pending' | 'paid' | 'failed' | 'refunded' | 'canceled';
   invoice_url?: string;
+  receipt_url?: string;
   paid_at?: string;
   created_at: string;
 };
@@ -86,6 +91,40 @@ export type UserPreferences = {
   updated_at: string;
 };
 
+export type GrowthMetrics = {
+  id: string;
+  user_id: string;
+  platform: 'linkedin' | 'twitter' | 'instagram' | 'threads' | 'tiktok' | 'facebook' | 'youtube';
+  metric_type: string;
+  metric_value: number;
+  recorded_at: string;
+  metadata: Record<string, any>;
+  created_at: string;
+};
+
+export type ContentTemplate = {
+  id: string;
+  title: string;
+  description: string | null;
+  platform: 'linkedin' | 'twitter' | 'instagram' | 'threads' | 'tiktok' | 'facebook' | 'youtube';
+  category: string;
+  template_content: string;
+  tags: string[];
+  is_premium: boolean;
+  usage_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserAchievement = {
+  id: string;
+  user_id: string;
+  achievement_type: string;
+  platform: 'linkedin' | 'twitter' | 'instagram' | 'threads' | 'tiktok' | 'facebook' | 'youtube' | null;
+  achieved_at: string;
+  metadata: Record<string, any>;
+};
+
 export type UserSession = {
   id: string;
   user_id: string;
@@ -107,144 +146,108 @@ export type PromoCodeUsage = {
   subscription_id: string | null;
 };
 
-// Fixed platformUtils with improved timeout handling and auto profile creation
+// ============================================================================
+// FIXED PLATFORM UTILS - NO MORE TIMEOUTS!
+// ============================================================================
 export const platformUtils = {
-  // Improved User Profile Management with shorter timeouts
+  // User Profile Management - COMPLETELY REMOVED TIMEOUTS
   async getUserProfile(userId: string): Promise<UserProfile | null> {
-    console.log('🔍 [platformUtils] Getting profile for user:', userId);
-    
     try {
-      // Shorter timeout for initial fetch, then fallback to creation
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000); // Reduced to 5 seconds
-      });
-
-      const fetchPromise = supabase
+      console.log('🔍 [platformUtils] Getting profile for user:', userId);
+      
+      const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
-      try {
-        const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
-
-        if (error) {
-          console.error('❌ [platformUtils] Error fetching user profile:', error);
-          
-          // If profile doesn't exist, try to create it
-          if (error.code === 'PGRST116' || error.message?.includes('no rows returned')) {
-            console.log('🔧 [platformUtils] Profile not found, attempting to create...');
-            return await this.createUserProfile(userId);
-          }
-          
-          // For other errors, try creating anyway
-          console.log('🔧 [platformUtils] Database error, attempting to create profile...');
-          return await this.createUserProfile(userId);
-        }
-
-        if (!data) {
-          console.log('ℹ️ [platformUtils] No profile found, attempting to create...');
-          return await this.createUserProfile(userId);
-        }
-
-        console.log('✅ [platformUtils] Profile found:', data.email);
-        return data;
-      } catch (timeoutError) {
-        console.error('⏰ [platformUtils] Profile fetch timed out, creating profile immediately');
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching user profile:', error);
+        // Try to create profile if it doesn't exist
         return await this.createUserProfile(userId);
       }
-    } catch (error: any) {
-      console.error('💥 [platformUtils] Unexpected error, creating profile as fallback:', error);
+
+      if (!data) {
+        console.log('⚠️ [platformUtils] No profile found, attempting to create one...');
+        return await this.createUserProfile(userId);
+      }
+
+      console.log('✅ [platformUtils] Profile found:', data.email);
+      return data;
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getUserProfile:', error);
+      // Fallback to profile creation
       return await this.createUserProfile(userId);
     }
   },
 
-  // Improved profile creation with direct database approach and shorter timeout
-  async createUserProfile(userId: string): Promise<UserProfile | null> {
-    console.log('🔨 [platformUtils] Creating profile for user:', userId);
-    
+  // Profile creation - NO TIMEOUTS, DIRECT APPROACH
+  async createUserProfile(userId?: string): Promise<UserProfile | null> {
     try {
-      // Use a much shorter timeout for profile creation
-      const createTimeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Profile creation timeout')), 3000); // 3 seconds
-      });
+      if (!userId) {
+        // Get current user ID from auth
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('❌ [platformUtils] No authenticated user for profile creation');
+          return null;
+        }
+        userId = user.id;
+      }
 
-      // Create profile with fallback email immediately
-      const fallbackEmail = `user-${userId}@temp.local`;
-      console.log('📧 [platformUtils] Creating profile with email:', fallbackEmail);
+      console.log('🔨 [platformUtils] Creating profile for user:', userId);
 
-      const createPromise = supabase
+      // Get user info from auth for email
+      const { data: { user } } = await supabase.auth.getUser();
+      const email = user?.email || `user-${userId}@temp.local`;
+      
+      console.log('📧 [platformUtils] Creating profile with email:', email);
+
+      const { data, error } = await supabase
         .from('user_profiles')
-        .insert({
+        .upsert({
           id: userId,
-          email: fallbackEmail,
+          email: email,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
         .select()
         .single();
 
-      try {
-        const { data, error } = await Promise.race([createPromise, createTimeoutPromise]);
-
-        if (error) {
-          console.error('❌ [platformUtils] Error creating profile:', error);
-          
-          // If it's a duplicate key error, try to fetch the existing profile quickly
-          if (error.code === '23505') {
-            console.log('ℹ️ [platformUtils] Profile already exists, attempting quick fetch...');
-            try {
-              const quickFetchPromise = supabase
-                .from('user_profiles')
-                .select('*')
-                .eq('id', userId)
-                .single();
-              
-              const quickTimeoutPromise = new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error('Quick fetch timeout')), 2000); // 2 seconds
-              });
-
-              const { data: existingData, error: fetchError } = await Promise.race([quickFetchPromise, quickTimeoutPromise]);
-              
-              if (!fetchError && existingData) {
-                console.log('✅ [platformUtils] Retrieved existing profile:', existingData.email);
-                return existingData;
-              }
-            } catch (fetchError) {
-              console.error('❌ [platformUtils] Quick fetch failed:', fetchError);
-            }
-          }
-          
-          return null;
-        }
-
-        console.log('✅ [platformUtils] Profile created successfully:', data.email);
-        
-        // Create preferences asynchronously (don't wait for it)
-        this.createUserPreferences(userId).catch(prefError => {
-          console.error('⚠️ [platformUtils] Failed to create preferences (non-blocking):', prefError);
-        });
-        
-        return data;
-      } catch (createTimeoutError) {
-        console.error('⏰ [platformUtils] Profile creation timed out');
+      if (error) {
+        console.error('❌ [platformUtils] Error creating user profile:', error);
         return null;
       }
+
+      console.log('✅ [platformUtils] Profile created successfully:', data.email);
+
+      // Create user preferences asynchronously (don't wait)
+      this.createUserPreferences(userId).catch(prefError => {
+        console.error('⚠️ [platformUtils] Failed to create preferences (non-blocking):', prefError);
+      });
+
+      return data;
     } catch (error) {
-      console.error('💥 [platformUtils] Error in profile creation:', error);
+      console.error('💥 [platformUtils] Exception in createUserProfile:', error);
       return null;
     }
   },
 
-  // Create user preferences if they don't exist
+  // Create user preferences - NO TIMEOUTS
   async createUserPreferences(userId: string): Promise<void> {
-    console.log('🔧 [platformUtils] Creating preferences for user:', userId);
-    
     try {
+      console.log('🔧 [platformUtils] Creating preferences for user:', userId);
+      
       const { error } = await supabase
         .from('user_preferences')
-        .insert({
+        .upsert({
           user_id: userId,
+          email_notifications: true,
+          push_notifications: true,
+          marketing_emails: false,
+          theme: 'auto',
+          language: 'en',
+          social_platforms: [],
+          growth_goals: {},
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
@@ -252,7 +255,7 @@ export const platformUtils = {
       if (error && !error.message?.includes('duplicate key')) {
         console.error('❌ [platformUtils] Error creating preferences:', error);
       } else {
-        console.log('✅ [platformUtils] Preferences created');
+        console.log('✅ [platformUtils] Preferences created successfully');
       }
     } catch (error) {
       console.error('💥 [platformUtils] Error creating preferences:', error);
@@ -260,9 +263,9 @@ export const platformUtils = {
   },
 
   async updateUserProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile | null> {
-    console.log('🔄 [platformUtils] Updating profile for user:', userId);
-    
     try {
+      console.log('📝 [platformUtils] Updating profile for user:', userId);
+      
       const { data, error } = await supabase
         .from('user_profiles')
         .update({
@@ -274,53 +277,43 @@ export const platformUtils = {
         .single();
 
       if (error) {
-        console.error('❌ [platformUtils] Error updating profile:', error);
+        console.error('❌ [platformUtils] Error updating user profile:', error);
         return null;
       }
 
-      console.log('✅ [platformUtils] Profile updated');
+      console.log('✅ [platformUtils] Profile updated successfully');
       return data;
     } catch (error) {
-      console.error('💥 [platformUtils] Error updating profile:', error);
+      console.error('💥 [platformUtils] Exception in updateUserProfile:', error);
       return null;
     }
   },
 
-  // Subscription Management with shorter timeout
+  // Subscription Management - NO TIMEOUTS
   async getUserSubscription(userId: string): Promise<UserSubscription | null> {
-    console.log('💳 [platformUtils] Getting subscription for user:', userId);
-    
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Subscription fetch timeout')), 5000); // Reduced timeout
-      });
-
-      const fetchPromise = supabase
+      console.log('💳 [platformUtils] Getting subscription for user:', userId);
+      
+      const { data, error } = await supabase
         .from('user_subscriptions')
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
-
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
 
       if (error) {
         console.error('❌ [platformUtils] Error fetching subscription:', error);
         return null;
       }
 
-      if (data) {
-        console.log('✅ [platformUtils] Subscription found:', data.status);
-      } else {
-        console.log('ℹ️ [platformUtils] No subscription found (normal for new users)');
+      if (!data) {
+        console.log('ℹ️ [platformUtils] No subscription found (expected for new users)');
+        return null;
       }
 
+      console.log('✅ [platformUtils] Subscription found:', data.status);
       return data;
-    } catch (error: any) {
-      if (error.message === 'Subscription fetch timeout') {
-        console.error('⏰ [platformUtils] Subscription fetch timed out');
-      } else {
-        console.error('💥 [platformUtils] Error fetching subscription:', error);
-      }
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getUserSubscription:', error);
       return null;
     }
   },
@@ -331,13 +324,13 @@ export const platformUtils = {
         .rpc('user_has_active_subscription', { user_uuid: userId });
 
       if (error) {
-        console.error('Error checking subscription status:', error);
+        console.error('❌ [platformUtils] Error checking subscription status:', error);
         return false;
       }
 
       return data || false;
     } catch (error) {
-      console.error('Error checking subscription status:', error);
+      console.error('💥 [platformUtils] Exception in hasActiveSubscription:', error);
       return false;
     }
   },
@@ -348,134 +341,319 @@ export const platformUtils = {
         .rpc('get_user_subscription_status', { user_uuid: userId });
 
       if (error) {
-        console.error('Error getting subscription status:', error);
+        console.error('❌ [platformUtils] Error getting subscription status:', error);
         return 'inactive';
       }
 
       return data || 'inactive';
     } catch (error) {
-      console.error('Error getting subscription status:', error);
+      console.error('💥 [platformUtils] Exception in getSubscriptionStatus:', error);
       return 'inactive';
     }
   },
 
-  // Activity Tracking with error handling
+  // NEW: Session ID Processing for Stripe Checkout Completion
+  async processStripeCheckoutSession(sessionId: string): Promise<boolean> {
+    try {
+      console.log('🔄 [platformUtils] Processing Stripe checkout session:', sessionId);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        console.error('❌ [platformUtils] No authenticated session for checkout processing');
+        return false;
+      }
+
+      // Call the new edge function to process the checkout session
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-checkout-session`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ [platformUtils] Checkout session processing failed:', errorData);
+        return false;
+      }
+
+      const result = await response.json();
+      console.log('✅ [platformUtils] Checkout session processed successfully:', result);
+      return result.success === true;
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in processStripeCheckoutSession:', error);
+      return false;
+    }
+  },
+
+  // Activity Tracking - Improved error handling
   async updateUserActivity(userId: string): Promise<void> {
     try {
       const { error } = await supabase
         .rpc('update_user_activity', { user_uuid: userId });
 
       if (error) {
-        console.error('Error updating user activity:', error);
+        console.error('❌ [platformUtils] Error updating user activity:', error);
       }
     } catch (error) {
-      console.error('Error updating user activity:', error);
+      console.error('💥 [platformUtils] Exception in updateUserActivity:', error);
+    }
+  },
+
+  // User Stats - Improved error handling
+  async getUserStats(userId: string): Promise<any> {
+    try {
+      const { data, error } = await supabase
+        .rpc('get_user_stats', { user_uuid: userId });
+
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching user stats:', error);
+        return {};
+      }
+
+      return data || {};
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getUserStats:', error);
+      return {};
     }
   },
 
   // Chat Management
   async getConversations(userId: string, includeArchived = false): Promise<ChatConversation[]> {
-    let query = supabase
-      .from('chat_conversations')
-      .select('*')
-      .eq('user_id', userId);
+    try {
+      let query = supabase
+        .from('chat_conversations')
+        .select('*')
+        .eq('user_id', userId);
 
-    if (!includeArchived) {
-      query = query.eq('is_archived', false);
-    }
+      if (!includeArchived) {
+        query = query.eq('is_archived', false);
+      }
 
-    const { data, error } = await query.order('last_message_at', { ascending: false });
+      const { data, error } = await query.order('last_message_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching conversations:', error);
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching conversations:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getConversations:', error);
       return [];
     }
-
-    return data || [];
   },
 
   async getMessages(conversationId: string): Promise<ChatMessage[]> {
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
 
-    if (error) {
-      console.error('Error fetching messages:', error);
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching messages:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getMessages:', error);
       return [];
     }
+  },
 
-    return data || [];
+  async createConversation(userId: string, title: string = 'New Conversation'): Promise<ChatConversation | null> {
+    try {
+      const { data, error } = await supabase
+        .from('chat_conversations')
+        .insert({
+          user_id: userId,
+          title,
+          message_count: 0,
+          last_message_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ [platformUtils] Error creating conversation:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in createConversation:', error);
+      return null;
+    }
+  },
+
+  async addMessage(conversationId: string, userId: string, content: string, role: 'user' | 'assistant' | 'system' = 'user'): Promise<ChatMessage | null> {
+    try {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .insert({
+          conversation_id: conversationId,
+          user_id: userId,
+          content,
+          role,
+          metadata: {},
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ [platformUtils] Error adding message:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in addMessage:', error);
+      return null;
+    }
+  },
+
+  // User Preferences
+  async getUserPreferences(userId: string): Promise<UserPreferences | null> {
+    try {
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching user preferences:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getUserPreferences:', error);
+      return null;
+    }
+  },
+
+  async updateUserPreferences(userId: string, updates: Partial<UserPreferences>): Promise<UserPreferences | null> {
+    try {
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ [platformUtils] Error updating user preferences:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in updateUserPreferences:', error);
+      return null;
+    }
   },
 
   // Billing Management
   async getBillingHistory(userId: string): Promise<BillingHistory[]> {
-    const { data, error } = await supabase
-      .from('billing_history')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('billing_history')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching billing history:', error);
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching billing history:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getBillingHistory:', error);
       return [];
     }
-
-    return data || [];
   },
 
   // Session Management
   async createUserSession(userId: string, sessionToken: string, expiresAt: Date, ipAddress?: string, userAgent?: string): Promise<UserSession | null> {
-    const { data, error } = await supabase
-      .from('user_sessions')
-      .insert({
-        user_id: userId,
-        session_token: sessionToken,
-        ip_address: ipAddress,
-        user_agent: userAgent,
-        expires_at: expiresAt.toISOString(),
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('user_sessions')
+        .insert({
+          user_id: userId,
+          session_token: sessionToken,
+          ip_address: ipAddress,
+          user_agent: userAgent,
+          expires_at: expiresAt.toISOString(),
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-    if (error) {
-      console.error('Error creating user session:', error);
+      if (error) {
+        console.error('❌ [platformUtils] Error creating user session:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in createUserSession:', error);
       return null;
     }
-
-    return data;
   },
 
   async getUserSessions(userId: string): Promise<UserSession[]> {
-    const { data, error } = await supabase
-      .from('user_sessions')
-      .select('*')
-      .eq('user_id', userId)
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('user_sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching user sessions:', error);
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching user sessions:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getUserSessions:', error);
       return [];
     }
-
-    return data || [];
   },
 
   async revokeUserSession(sessionToken: string): Promise<boolean> {
-    const { error } = await supabase
-      .from('user_sessions')
-      .delete()
-      .eq('session_token', sessionToken);
+    try {
+      const { error } = await supabase
+        .from('user_sessions')
+        .delete()
+        .eq('session_token', sessionToken);
 
-    if (error) {
-      console.error('Error revoking user session:', error);
+      if (error) {
+        console.error('❌ [platformUtils] Error revoking user session:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in revokeUserSession:', error);
       return false;
     }
-
-    return true;
   },
 
   // Promo Code Management
@@ -504,24 +682,29 @@ export const platformUtils = {
 
       return await response.json();
     } catch (error) {
-      console.error('Error validating promo code:', error);
+      console.error('❌ [platformUtils] Error validating promo code:', error);
       throw error;
     }
   },
 
   async getUserPromoHistory(userId: string): Promise<PromoCodeUsage[]> {
-    const { data, error } = await supabase
-      .from('promo_code_usage')
-      .select('*')
-      .eq('user_id', userId)
-      .order('applied_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('promo_code_usage')
+        .select('*')
+        .eq('user_id', userId)
+        .order('applied_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching promo code history:', error);
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching promo code history:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('💥 [platformUtils] Exception in getUserPromoHistory:', error);
       return [];
     }
-
-    return data || [];
   },
 
   async createCheckoutSession(priceId: string, userId: string, planType: string, promoCode?: string, promotionCodeId?: string): Promise<any> {
@@ -561,7 +744,7 @@ export const platformUtils = {
 
       return await response.json();
     } catch (error) {
-      console.error('Error creating checkout session:', error);
+      console.error('❌ [platformUtils] Error creating checkout session:', error);
       throw error;
     }
   },
@@ -575,6 +758,7 @@ export type Subscription = UserSubscription;
 export const subscriptionUtils = {
   getUserSubscriptionDetails: platformUtils.getUserSubscription,
   hasActiveSubscription: platformUtils.hasActiveSubscription,
+  getUserStats: platformUtils.getUserStats,
   getBillingHistory: platformUtils.getBillingHistory,
   getConversations: platformUtils.getConversations,
   getMessages: platformUtils.getMessages,

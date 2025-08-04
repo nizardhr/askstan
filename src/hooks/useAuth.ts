@@ -1,3 +1,5 @@
+// src/hooks/useAuth.ts - Updated with session ID processing and improved error handling
+
 import { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, UserProfile, UserSubscription, platformUtils } from '../lib/supabase';
@@ -7,40 +9,31 @@ export const useAuth = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processingCheckout, setProcessingCheckout] = useState(false);
 
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
       console.log('🔑 [useAuth] Getting initial session...');
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        console.log('🔄 [useAuth] Auth state changed: SIGNED_IN session exists');
+        await fetchUserData(session.user.id);
         
-        if (error) {
-          console.error('❌ [useAuth] Error getting session:', error);
-          setUser(null);
-          setProfile(null);
-          setSubscription(null);
-          setLoading(false);
-          return;
+        // Check for session_id parameter from Stripe checkout
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('session_id');
+        
+        if (sessionId) {
+          console.log('💳 [useAuth] Found Stripe session ID, processing checkout...');
+          await processStripeCheckout(sessionId);
         }
-
-        console.log('👤 [useAuth] Initial session:', session ? 'found' : 'not found');
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          console.log('📋 [useAuth] Fetching user data for:', session.user.id);
-          await fetchUserData(session.user.id);
-        }
-        
-        console.log('✅ [useAuth] Initial session processing complete');
-        setLoading(false);
-      } catch (error) {
-        console.error('💥 [useAuth] Unexpected error in getInitialSession:', error);
-        setUser(null);
-        setProfile(null);
-        setSubscription(null);
-        setLoading(false);
       }
+      
+      setLoading(false);
     };
 
     getInitialSession();
@@ -49,32 +42,19 @@ export const useAuth = () => {
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('🔄 [useAuth] Auth state changed:', event, session ? 'session exists' : 'no session');
+        setUser(session?.user ?? null);
         
-        try {
-          setUser(session?.user ?? null);
-          
-          if (session?.user) {
-            console.log('📋 [useAuth] Auth change - fetching user data for:', session.user.id);
-            await fetchUserData(session.user.id);
-            // Update user activity
-            try {
-              await platformUtils.updateUserActivity(session.user.id);
-            } catch (activityError) {
-              console.warn('⚠️ [useAuth] Failed to update user activity:', activityError);
-              // Don't fail the whole flow for this
-            }
-          } else {
-            console.log('🧹 [useAuth] No session, clearing profile and subscription');
-            setProfile(null);
-            setSubscription(null);
-          }
-          
-          console.log('✅ [useAuth] Auth state change processing complete');
-          setLoading(false);
-        } catch (error) {
-          console.error('💥 [useAuth] Error in auth state change handler:', error);
-          setLoading(false);
+        if (session?.user) {
+          console.log('📋 [useAuth] Auth change - fetching user data for:', session.user.id);
+          await fetchUserData(session.user.id);
+          // Update user activity
+          await platformUtils.updateUserActivity(session.user.id);
+        } else {
+          setProfile(null);
+          setSubscription(null);
         }
+        
+        setLoading(false);
       }
     );
 
@@ -83,47 +63,73 @@ export const useAuth = () => {
     };
   }, []);
 
-  const fetchUserData = async (userId: string) => {
-    console.log('📊 [useAuth] Fetching user data for:', userId);
+  const processStripeCheckout = async (sessionId: string) => {
+    if (processingCheckout) return; // Prevent duplicate processing
+    
     try {
-      // Fetch user profile using platform utils
+      setProcessingCheckout(true);
+      console.log('🔄 [useAuth] Processing Stripe checkout session:', sessionId);
+      
+      const success = await platformUtils.processStripeCheckoutSession(sessionId);
+      
+      if (success) {
+        console.log('✅ [useAuth] Checkout processed successfully, refreshing user data...');
+        // Refresh user data to get updated subscription
+        if (user) {
+          await fetchUserData(user.id);
+        }
+        
+        // Clean up URL to remove session_id parameter
+        const url = new URL(window.location.href);
+        url.searchParams.delete('session_id');
+        window.history.replaceState({}, document.title, url.toString());
+      } else {
+        console.error('❌ [useAuth] Checkout processing failed');
+      }
+    } catch (error) {
+      console.error('💥 [useAuth] Error processing checkout:', error);
+    } finally {
+      setProcessingCheckout(false);
+    }
+  };
+
+  const fetchUserData = async (userId: string) => {
+    try {
+      console.log('📊 [useAuth] Fetching user data for:', userId);
+      
+      // Fetch user profile using platform utils (no timeout anymore)
       console.log('👤 [useAuth] Fetching user profile...');
       const profileData = await platformUtils.getUserProfile(userId);
-      
       if (profileData) {
-        console.log('✅ [useAuth] Profile found:', profileData.email);
         setProfile(profileData);
+        console.log('✅ [useAuth] Profile loaded successfully');
       } else {
         console.warn('⚠️ [useAuth] No profile could be created/found for user:', userId);
-        // Set profile to null to indicate no profile exists
-        setProfile(null);
+        // Don't set profile to null, keep existing state for now
       }
 
-      // Fetch user subscription using platform utils
+      // Fetch user subscription using platform utils (no timeout anymore)
       console.log('💳 [useAuth] Fetching user subscription...');
       const subscriptionData = await platformUtils.getUserSubscription(userId);
+      setSubscription(subscriptionData); // Will be null for new users without subscription, which is expected
       
       if (subscriptionData) {
-        console.log('✅ [useAuth] Subscription found:', subscriptionData.status);
-        setSubscription(subscriptionData);
+        console.log('✅ [useAuth] Subscription loaded:', subscriptionData.status);
       } else {
         console.log('ℹ️ [useAuth] No subscription found (expected for new users)');
-        setSubscription(null);
       }
-      
     } catch (error) {
-      console.error('❌ [useAuth] Error fetching user data:', error);
-      
-      // Don't set profile to null if there's an error - this might be temporary
-      // setProfile(null);
+      console.error('💥 [useAuth] Error fetching user data:', error);
+      // Don't reset profile to null on subscription fetch error
+      // New users won't have subscriptions, so this is expected
       setSubscription(null);
-      
-      // Don't throw the error - let the app continue
     }
   };
 
   const signUp = async (email: string, password: string) => {
     try {
+      console.log('📝 [useAuth] Attempting signup for:', email);
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -133,7 +139,7 @@ export const useAuth = () => {
       });
 
       if (error) {
-        console.error('Signup error:', error);
+        console.error('❌ [useAuth] Signup error:', error);
         
         // Handle specific Supabase errors
         if (error.message?.includes('rate limit exceeded')) {
@@ -145,81 +151,87 @@ export const useAuth = () => {
         throw error;
       }
       
-      // Wait a moment for the database trigger to complete
+      console.log('✅ [useAuth] Signup successful, user created');
+      
+      // Wait a moment for the database trigger to complete, then fetch user data
       if (data.user) {
         setTimeout(() => {
           fetchUserData(data.user!.id);
-        }, 1000);
+        }, 2000); // Increased timeout to allow database operations to complete
       }
       
       return data;
     } catch (error) {
-      console.error('Signup failed:', error);
+      console.error('💥 [useAuth] Signup failed:', error);
       throw error;
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
+      console.log('🔐 [useAuth] Attempting signin for:', email);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
-        console.error('SignIn error:', error);
+        console.error('❌ [useAuth] SignIn error:', error);
         throw error;
       }
       
+      console.log('✅ [useAuth] SignIn successful');
+      
       // Update user activity on successful login
       if (data.user) {
-        try {
-          await platformUtils.updateUserActivity(data.user.id);
-        } catch (activityError) {
-          console.warn('Failed to update user activity:', activityError);
-          // Don't fail login for this
-        }
-        
+        await platformUtils.updateUserActivity(data.user.id);
         // Ensure user data is fetched
         await fetchUserData(data.user.id);
       }
       
       return data;
     } catch (error) {
-      console.error('SignIn failed:', error);
+      console.error('💥 [useAuth] SignIn failed:', error);
       throw error;
     }
   };
 
   const signOut = async () => {
+    console.log('👋 [useAuth] Signing out...');
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    console.log('✅ [useAuth] Signed out successfully');
   };
 
   const resetPassword = async (email: string) => {
+    console.log('🔄 [useAuth] Requesting password reset for:', email);
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
 
     if (error) throw error;
+    console.log('✅ [useAuth] Password reset email sent');
     return data;
   };
 
   const updatePassword = async (newPassword: string) => {
     try {
+      console.log('🔄 [useAuth] Updating user password...');
+      
       const { data, error } = await supabase.auth.updateUser({
         password: newPassword,
       });
 
       if (error) {
-        console.error('Supabase password update error:', error);
+        console.error('❌ [useAuth] Supabase password update error:', error);
         throw error;
       }
 
-      console.log('Password updated successfully:', data);
+      console.log('✅ [useAuth] Password updated successfully:', data);
       return data;
     } catch (error) {
-      console.error('Password update failed:', error);
+      console.error('💥 [useAuth] Password update failed:', error);
       throw error;
     }
   };
@@ -227,16 +239,20 @@ export const useAuth = () => {
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!user) throw new Error('No user logged in');
 
+    console.log('📝 [useAuth] Updating user profile...');
     const updatedProfile = await platformUtils.updateUserProfile(user.id, updates);
     if (updatedProfile) {
       setProfile(updatedProfile);
+      console.log('✅ [useAuth] Profile updated successfully');
     }
     
     return updatedProfile;
   };
 
   const hasActiveSubscription = () => {
-    return subscription?.status === 'active' || subscription?.status === 'trialing';
+    const active = subscription?.status === 'active' || subscription?.status === 'trialing';
+    console.log('🔍 [useAuth] Checking active subscription:', { status: subscription?.status, active });
+    return active;
   };
 
   const isSubscriptionPastDue = () => {
@@ -269,20 +285,12 @@ export const useAuth = () => {
     return subscription.plan_type === 'monthly' ? 4.99 : 49.99;
   };
 
-  const refetchUserData = async () => {
-    if (user) {
-      console.log('🔄 [useAuth] Manually refetching user data...');
-      await fetchUserData(user.id);
-    } else {
-      console.warn('⚠️ [useAuth] Cannot refetch data - no user');
-    }
-  };
-
   return {
     user,
     profile,
     subscription,
-    loading,
+    loading: loading || processingCheckout,
+    processingCheckout,
     signUp,
     signIn,
     signOut,
@@ -297,6 +305,7 @@ export const useAuth = () => {
     getTrialEndDate,
     getPlanDisplayName,
     getNextBillingAmount,
-    refetchUserData,
+    refetchUserData: () => user ? fetchUserData(user.id) : Promise.resolve(),
+    processStripeCheckout, // Expose for manual processing if needed
   };
 };
