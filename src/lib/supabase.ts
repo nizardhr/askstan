@@ -130,22 +130,6 @@ export type UserAchievement = {
   metadata: Record<string, any>;
 };
 
-export type PromoCodeUsage = {
-  id: string;
-  user_id: string;
-  subscription_id: string | null;
-  promo_code: string;
-  stripe_promotion_code_id: string | null;
-  stripe_coupon_id: string | null;
-  discount_type: 'percentage' | 'amount';
-  discount_value: number;
-  discount_amount_cents: number | null;
-  currency: string;
-  applied_at: string;
-  metadata: Record<string, any>;
-  created_at: string;
-};
-
 export type UserSession = {
   id: string;
   user_id: string;
@@ -154,6 +138,17 @@ export type UserSession = {
   user_agent: string | null;
   expires_at: string;
   created_at: string;
+};
+
+export type PromoCodeUsage = {
+  id: string;
+  user_id: string;
+  promo_code: string;
+  stripe_promotion_code_id: string;
+  discount_amount: number | null;
+  discount_percentage: number | null;
+  applied_at: string;
+  subscription_id: string | null;
 };
 
 // Comprehensive utility functions for platform management
@@ -574,6 +569,94 @@ export const platformUtils = {
     }
 
     return true;
+  },
+
+  // Promo Code Management
+  async validatePromoCode(promoCode: string): Promise<any> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Authentication required');
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-promo-code`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'x-requested-with': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ promoCode: promoCode.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error validating promo code:', error);
+      throw error;
+    }
+  },
+
+  async getUserPromoHistory(userId: string): Promise<PromoCodeUsage[]> {
+    const { data, error } = await supabase
+      .from('promo_code_usage')
+      .select('*')
+      .eq('user_id', userId)
+      .order('applied_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching promo code history:', error);
+      return [];
+    }
+
+    return data || [];
+  },
+
+  async createCheckoutSession(priceId: string, userId: string, planType: string, promoCode?: string, promotionCodeId?: string): Promise<any> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Authentication required');
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`;
+      
+      const requestBody: any = {
+        priceId,
+        userId,
+        planType,
+      };
+
+      if (promoCode && promotionCodeId) {
+        requestBody.promoCode = promoCode;
+        requestBody.promotionCodeId = promotionCodeId;
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'x-requested-with': 'XMLHttpRequest',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error creating checkout session:', error);
+      throw error;
+    }
   },
 };
 
