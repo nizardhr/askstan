@@ -179,18 +179,23 @@ export const platformUtils = {
 
   // Subscription Management
   async getUserSubscription(userId: string): Promise<UserSubscription | null> {
-    const { data, error } = await supabase
-      .from('user_subscriptions')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle(); // Use maybeSingle() instead of single() to handle no rows
 
-    if (error) {
+      if (error) {
+        console.error('Error fetching subscription:', error);
+        return null;
+      }
+
+      return data; // Will be null if no subscription exists, which is fine for new users
+    } catch (error) {
       console.error('Error fetching subscription:', error);
       return null;
     }
-
-    return data;
   },
 
   async hasActiveSubscription(userId: string): Promise<boolean> {

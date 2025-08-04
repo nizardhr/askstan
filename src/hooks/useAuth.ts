@@ -54,10 +54,11 @@ export const useAuth = () => {
 
       // Fetch user subscription using platform utils
       const subscriptionData = await platformUtils.getUserSubscription(userId);
-      setSubscription(subscriptionData);
+      setSubscription(subscriptionData); // Will be null for new users without subscription, which is expected
     } catch (error) {
       console.error('Error fetching user data:', error);
-      setProfile(null);
+      // Don't reset profile to null on subscription fetch error
+      // New users won't have subscriptions, so this is expected
       setSubscription(null);
     }
   };
