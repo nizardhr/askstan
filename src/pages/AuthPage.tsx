@@ -43,9 +43,12 @@ const AuthPage: React.FC = () => {
         
         // After successful registration, wait a moment then redirect
         if (result.user) {
+          // Give more time for profile creation and show loading state
+          setLoading(true);
           setTimeout(() => {
+            setLoading(false);
             navigate('/subscribe');
-          }, 1500); // Give time for profile creation
+          }, 2000); // Give more time for profile creation
         }
       } else {
         // Login
@@ -54,9 +57,12 @@ const AuthPage: React.FC = () => {
         
         // After successful login, wait a moment then redirect
         if (result.user) {
+          // Give more time for data fetching and show loading state
+          setLoading(true);
           setTimeout(() => {
+            setLoading(false);
             navigate(from, { replace: true });
-          }, 1000); // Give time for data fetching
+          }, 1500); // Give more time for data fetching
         }
       }
     } catch (err: any) {
