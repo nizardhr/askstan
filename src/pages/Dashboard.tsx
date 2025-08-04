@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut, User, Settings, Send, MessageCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 const Dashboard: React.FC = () => {
   const { signOut, user, profile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [chatbotLoaded, setChatbotLoaded] = useState(false);
@@ -51,7 +52,7 @@ const Dashboard: React.FC = () => {
       console.error('[Dashboard] Error validating Stripe session:', error);
     } finally {
       // Clean URL
-      const urlParams = new URLSearchParams(window.location.search);
+      const urlParams = new URLSearchParams(location.search);
       urlParams.delete('session_id');
       const newUrl = window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
       console.log('[Dashboard] Cleaning URL to:', newUrl);
@@ -60,27 +61,27 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Persistent check for user/profile readiness and session_id in URL
   useEffect(() => {
-    const interval = setInterval(() => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionId = urlParams.get('session_id');
+    const urlParams = new URLSearchParams(location.search);
+    const sessionId = urlParams.get('session_id');
 
-      if (!sessionId) return; // No session id
+    console.log('[Dashboard] URL params:', location.search);
+    console.log('[Dashboard] session_id:', sessionId);
+    console.log('[Dashboard] user:', user);
+    console.log('[Dashboard] profile:', profile);
 
-      console.log('[Dashboard] Checking readiness for session validation...');
-      console.log('[Dashboard] user:', user);
-      console.log('[Dashboard] profile:', profile);
+    if (!sessionId) {
+      console.log('[Dashboard] No session_id in URL, skipping validation.');
+      return;
+    }
 
-      if (user && profile && !validatingSession) {
-        console.log('[Dashboard] All data ready. Starting session validation...');
-        validateSession(sessionId);
-        clearInterval(interval); // Stop interval after validation starts
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [user, profile, validatingSession]);
+    if (user && profile && !validatingSession) {
+      console.log('[Dashboard] All data ready. Starting session validation...');
+      validateSession(sessionId);
+    } else {
+      console.log('[Dashboard] user/profile not ready yet.');
+    }
+  }, [user, profile, location.search]);
 
   const handleLogout = async () => {
     try {
@@ -160,6 +161,16 @@ const Dashboard: React.FC = () => {
       }
     };
   }, [user]);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* ... rest of your component remains unchanged ... */}
+    </div>
+  );
+};
+
+export default Dashboard;
+
 
   return (
     <div className="min-h-screen bg-gray-50">
