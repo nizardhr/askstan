@@ -25,6 +25,7 @@ const AuthPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setShowRateLimit(false);
     setLoading(true);
 
     try {
@@ -39,26 +40,36 @@ const AuthPage: React.FC = () => {
         
         const result = await signUp(email, password);
         console.log('Signup result:', result);
-        // After successful registration, redirect to subscription
-        navigate('/subscribe');
+        
+        // After successful registration, wait a moment then redirect
+        if (result.user) {
+          setTimeout(() => {
+            navigate('/subscribe');
+          }, 1500); // Give time for profile creation
+        }
       } else {
         // Login
         const result = await signIn(email, password);
         console.log('Login result:', result);
-        // After successful login, redirect to where user was trying to go
-        navigate(from, { replace: true });
+        
+        // After successful login, wait a moment then redirect
+        if (result.user) {
+          setTimeout(() => {
+            navigate(from, { replace: true });
+          }, 1000); // Give time for data fetching
+        }
       }
     } catch (err: any) {
       console.error('Auth error:', err);
       
       // Handle specific error types with user-friendly messages
-      if (err.message?.includes('rate limit exceeded')) {
+      if (err.message?.includes('rate limit exceeded') || err.message?.includes('email rate limit exceeded')) {
         setShowRateLimit(true);
         setError('');
       } else if (err.message?.includes('User already registered')) {
         setError('An account with this email already exists. Try signing in instead.');
       } else if (err.message?.includes('Invalid login credentials')) {
-        setError('Invalid email or password. Please check your credentials. If you just signed up, try waiting a few minutes or check your email for confirmation.');
+        setError('Invalid email or password. Please check your credentials and try again.');
       } else if (err.message?.includes('Email not confirmed')) {
         setError('Please check your email and click the confirmation link before signing in.');
       } else if (err.message?.includes('signup disabled')) {
