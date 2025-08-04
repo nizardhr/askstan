@@ -82,36 +82,7 @@ export const useAuth = () => {
       setCheckoutProcessed(true);
       console.log('🔄 [useAuth] Processing Stripe checkout session:', sessionId);
       
-      // Call the validate-checkout-session edge function to process the payment
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error('No authenticated session');
-      }
-
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`;
-      
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          sessionId: sessionId,
-          userId: user?.id 
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('❌ [useAuth] Checkout validation failed:', errorData);
-        throw new Error(errorData.error || 'Checkout validation failed');
-      }
-
-      const result = await response.json();
-      console.log('✅ [useAuth] Checkout session validated successfully:', result);
-      
-      // If validation succeeds, also call our local function to ensure subscription is created
+      // Call local function to create subscription
       if (result.success && user?.id) {
         try {
           const { data, error } = await supabase.rpc('handle_checkout_completion', {

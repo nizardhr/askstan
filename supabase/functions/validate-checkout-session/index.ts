@@ -118,29 +118,14 @@ Deno.serve(async (req) => {
     const { error: profileError } = await supabase
       .from('user_profiles')
       .update({ 
-        subscription_status: subscription.status, 
-        stripe_subscription_id: subscription.id,
-        stripe_customer_id: session.customer as string,
+        onboarding_completed: true,
         updated_at: new Date().toISOString()
       })
       .eq('id', userId);
 
     if (profileError) {
-      console.error('Supabase profile update error:', profileError);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Failed to update user profile', 
-          details: profileError.message 
-        }), 
-        { 
-          status: 500, 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
+      console.error('Supabase profile update error (non-critical):', profileError);
+      // Don't fail the whole request for profile update errors
     }
 
     // Also create/update subscription record
@@ -155,13 +140,16 @@ Deno.serve(async (req) => {
         plan_type: session.metadata?.planType || 'monthly',
         current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
         current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        promo_code: session.metadata?.promoCode || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
       });
 
     if (subscriptionError) {
-      console.error('Subscription record error:', subscriptionError);
-      // Don't fail the whole request for this - just log it
+      console.error('Subscription record error (non-critical):', subscriptionError);
+      // Don't fail the whole request for subscription errors
     }
 
     console.log('Session validation successful!');
