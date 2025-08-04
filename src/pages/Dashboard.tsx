@@ -13,9 +13,15 @@ const Dashboard: React.FC = () => {
   const [chatbotError, setChatbotError] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([
-    { id: 1, text: "Hello! I'm Stan, your personal AI assistant powered by Yvexan Agency. How can I help you today?", sender: 'bot', timestamp: new Date() }
+    {
+      id: 1,
+      text: "Hello! I'm Stan, your personal AI assistant powered by Yvexan Agency. How can I help you today?",
+      sender: 'bot',
+      timestamp: new Date(),
+    },
   ]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [validatingSession, setValidatingSession] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -27,46 +33,48 @@ const Dashboard: React.FC = () => {
   };
 
   useEffect(() => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const sessionId = urlParams.get('session_id');
-
-  const validateSession = async (sessionId: string) => {
-  try {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${user?.access_token}` // optional for later secure method
-        },
-        body: JSON.stringify({ sessionId: sessionId, userId: user.id })
-      }
-    );
-
-    const result = await response.json();
-
-    if (result.success) {
-      console.log('Stripe session validated successfully!');
-    } else {
-      console.error('Stripe session validation failed:', result.error);
-    }
-  } catch (error) {
-    console.error('Error validating Stripe session:', error);
-  } finally {
-    // Clean URL to prevent looping
     const urlParams = new URLSearchParams(window.location.search);
-    urlParams.delete('session_id');
-    window.history.replaceState({}, document.title, `${window.location.pathname}`);
-  }
-};
+    const sessionId = urlParams.get('session_id');
 
+    if (!sessionId || !user || !profile) return;
 
-  if (sessionId && user) {
-    console.log('Validating Stripe session:', sessionId);
+    const validateSession = async (sessionId: string) => {
+      setValidatingSession(true);
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-checkout-session`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${user.access_token}`, // if applicable
+            },
+            body: JSON.stringify({ sessionId, userId: profile.id }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (result.success) {
+          console.log('Stripe session validated successfully!');
+          setShowSuccess(true);
+        } else {
+          console.error('Stripe session validation failed:', result.error);
+        }
+      } catch (error) {
+        console.error('Error validating Stripe session:', error);
+      } finally {
+        // Remove session_id query param to avoid reload loop
+        urlParams.delete('session_id');
+        const newUrl =
+          window.location.pathname + (urlParams.toString() ? `?${urlParams.toString()}` : '');
+        window.history.replaceState({}, document.title, newUrl);
+        setValidatingSession(false);
+      }
+    };
+
     validateSession(sessionId);
-  }
-}, [user]);
+  }, [user, profile]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,20 +84,21 @@ const Dashboard: React.FC = () => {
       id: messages.length + 1,
       text: message,
       sender: 'user' as const,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setMessage('');
 
     setTimeout(() => {
       const botResponse = {
         id: messages.length + 2,
-        text: "I'm currently running in fallback mode. The full AskStan chatbot service by Yvexan Agency will be available once the service is restored. In the meantime, I can provide basic assistance.",
+        text:
+          "I'm currently running in fallback mode. The full AskStan chatbot service by Yvexan Agency will be available once the service is restored. In the meantime, I can provide basic assistance.",
         sender: 'bot' as const,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, botResponse]);
+      setMessages((prev) => [...prev, botResponse]);
     }, 1000);
   };
 
@@ -106,7 +115,7 @@ const Dashboard: React.FC = () => {
           verify: { projectID: '688d150bdb7293eb99bdbe16' },
           url: 'https://general-runtime.voiceflow.com',
           versionID: 'production',
-          voice: { url: 'https://runtime-api.voiceflow.com' }
+          voice: { url: 'https://runtime-api.voiceflow.com' },
         });
         setChatbotLoaded(true);
         setChatbotError(false);
@@ -161,7 +170,10 @@ const Dashboard: React.FC = () => {
 
               {showDropdown && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                  <Link to="/settings" className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  <Link
+                    to="/settings"
+                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
                     <Settings className="w-4 h-4 mr-3" />
                     Settings
                   </Link>
@@ -196,7 +208,9 @@ const Dashboard: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 h-[600px] flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">Chat with Stan</h3>
-            <p className="text-sm text-gray-500">{chatbotLoaded ? 'Powered by Yvexan Agency' : 'Ask anything, get personalized answers instantly'}</p>
+            <p className="text-sm text-gray-500">
+              {chatbotLoaded ? 'Powered by Yvexan Agency' : 'Ask anything, get personalized answers instantly'}
+            </p>
           </div>
 
           <div id="askstan-chat" className="flex-1 bg-gradient-to-br from-blue-50 to-amber-50 p-4 relative">
@@ -208,8 +222,15 @@ const Dashboard: React.FC = () => {
               <div className="h-full flex flex-col">
                 <div className="flex-1 overflow-y-auto mb-4 space-y-4">
                   {messages.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-800 border'}`}>
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                          msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-800 border'
+                        }`}
+                      >
                         {msg.sender === 'bot' && (
                           <div className="flex items-center mb-1">
                             <MessageCircle className="w-4 h-4 mr-2 text-blue-600" />
@@ -217,7 +238,9 @@ const Dashboard: React.FC = () => {
                           </div>
                         )}
                         <p className="text-sm">{msg.text}</p>
-                        <p className="text-xs opacity-70 mt-1">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        <p className="text-xs opacity-70 mt-1">
+                          {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
                       </div>
                     </div>
                   ))}
