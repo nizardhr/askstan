@@ -63,6 +63,28 @@ export const useAuth = () => {
   };
 
   const signUp = async (email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+        },
+      });
+
+      if (error) {
+        console.error('Signup error:', error);
+        throw error;
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Signup failed:', error);
+      throw error;
+    }
+  };
+
+  const signUpOld = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,

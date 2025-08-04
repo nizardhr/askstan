@@ -34,16 +34,19 @@ const AuthPage: React.FC = () => {
           throw new Error('Password must be at least 6 characters');
         }
         
-        await signUp(email, password);
+        const result = await signUp(email, password);
+        console.log('Signup result:', result);
         // After successful registration, redirect to subscription
         navigate('/subscribe');
       } else {
         // Login
-        await signIn(email, password);
+        const result = await signIn(email, password);
+        console.log('Login result:', result);
         // After successful login, redirect to where user was trying to go
         navigate(from, { replace: true });
       }
     } catch (err: any) {
+      console.error('Auth error:', err);
       setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
