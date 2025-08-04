@@ -107,16 +107,16 @@ export type PromoCodeUsage = {
   subscription_id: string | null;
 };
 
-// Fixed platformUtils with timeout protection and auto profile creation
+// Fixed platformUtils with improved timeout handling and auto profile creation
 export const platformUtils = {
-  // User Profile Management with timeout and auto-creation
+  // Improved User Profile Management with shorter timeouts
   async getUserProfile(userId: string): Promise<UserProfile | null> {
     console.log('🔍 [platformUtils] Getting profile for user:', userId);
     
     try {
-      // Add timeout to prevent hanging
+      // Shorter timeout for initial fetch, then fallback to creation
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000); // 10 second timeout
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000); // Reduced to 5 seconds
       });
 
       const fetchPromise = supabase
@@ -125,53 +125,55 @@ export const platformUtils = {
         .eq('id', userId)
         .maybeSingle();
 
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+      try {
+        const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
 
-      if (error) {
-        console.error('❌ [platformUtils] Error fetching user profile:', error);
-        
-        // If profile doesn't exist, try to create it
-        if (error.code === 'PGRST116' || error.message?.includes('no rows returned')) {
-          console.log('🔧 [platformUtils] Profile not found, attempting to create...');
+        if (error) {
+          console.error('❌ [platformUtils] Error fetching user profile:', error);
+          
+          // If profile doesn't exist, try to create it
+          if (error.code === 'PGRST116' || error.message?.includes('no rows returned')) {
+            console.log('🔧 [platformUtils] Profile not found, attempting to create...');
+            return await this.createUserProfile(userId);
+          }
+          
+          // For other errors, try creating anyway
+          console.log('🔧 [platformUtils] Database error, attempting to create profile...');
           return await this.createUserProfile(userId);
         }
-        
-        return null;
-      }
 
-      if (!data) {
-        console.log('ℹ️ [platformUtils] No profile found, attempting to create...');
+        if (!data) {
+          console.log('ℹ️ [platformUtils] No profile found, attempting to create...');
+          return await this.createUserProfile(userId);
+        }
+
+        console.log('✅ [platformUtils] Profile found:', data.email);
+        return data;
+      } catch (timeoutError) {
+        console.error('⏰ [platformUtils] Profile fetch timed out, creating profile immediately');
         return await this.createUserProfile(userId);
       }
-
-      console.log('✅ [platformUtils] Profile found:', data.email);
-      return data;
     } catch (error: any) {
-      console.error('💥 [platformUtils] Unexpected error fetching profile:', error);
-      
-      if (error.message === 'Profile fetch timeout') {
-        console.error('⏰ [platformUtils] Profile fetch timed out');
-        return null;
-      }
-      
-      // Try to create profile if fetch failed
-      console.log('🔧 [platformUtils] Fetch failed, attempting to create profile...');
+      console.error('💥 [platformUtils] Unexpected error, creating profile as fallback:', error);
       return await this.createUserProfile(userId);
     }
   },
 
-  // Fixed profile creation - creates profile directly without relying on getUser()
+  // Improved profile creation with direct database approach and shorter timeout
   async createUserProfile(userId: string): Promise<UserProfile | null> {
     console.log('🔨 [platformUtils] Creating profile for user:', userId);
     
     try {
-      // Instead of relying on getUser(), create profile with fallback email
-      // and let the database trigger or later update fix the email
-      const fallbackEmail = `user-${userId}@temp.local`;
-      
-      console.log('📧 [platformUtils] Creating profile with fallback email:', fallbackEmail);
+      // Use a much shorter timeout for profile creation
+      const createTimeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Profile creation timeout')), 3000); // 3 seconds
+      });
 
-      const { data, error } = await supabase
+      // Create profile with fallback email immediately
+      const fallbackEmail = `user-${userId}@temp.local`;
+      console.log('📧 [platformUtils] Creating profile with email:', fallbackEmail);
+
+      const createPromise = supabase
         .from('user_profiles')
         .insert({
           id: userId,
@@ -182,39 +184,54 @@ export const platformUtils = {
         .select()
         .single();
 
-      if (error) {
-        console.error('❌ [platformUtils] Error creating profile:', error);
-        
-        // If it's a duplicate key error, try to fetch the existing profile
-        if (error.code === '23505') {
-          console.log('ℹ️ [platformUtils] Profile already exists, fetching it...');
-          try {
-            const { data: existingData, error: fetchError } = await supabase
-              .from('user_profiles')
-              .select('*')
-              .eq('id', userId)
-              .single();
-            
-            if (!fetchError) {
-              console.log('✅ [platformUtils] Retrieved existing profile:', existingData.email);
-              return existingData;
+      try {
+        const { data, error } = await Promise.race([createPromise, createTimeoutPromise]);
+
+        if (error) {
+          console.error('❌ [platformUtils] Error creating profile:', error);
+          
+          // If it's a duplicate key error, try to fetch the existing profile quickly
+          if (error.code === '23505') {
+            console.log('ℹ️ [platformUtils] Profile already exists, attempting quick fetch...');
+            try {
+              const quickFetchPromise = supabase
+                .from('user_profiles')
+                .select('*')
+                .eq('id', userId)
+                .single();
+              
+              const quickTimeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('Quick fetch timeout')), 2000); // 2 seconds
+              });
+
+              const { data: existingData, error: fetchError } = await Promise.race([quickFetchPromise, quickTimeoutPromise]);
+              
+              if (!fetchError && existingData) {
+                console.log('✅ [platformUtils] Retrieved existing profile:', existingData.email);
+                return existingData;
+              }
+            } catch (fetchError) {
+              console.error('❌ [platformUtils] Quick fetch failed:', fetchError);
             }
-          } catch (fetchExistingError) {
-            console.error('❌ [platformUtils] Error fetching existing profile:', fetchExistingError);
           }
+          
+          return null;
         }
+
+        console.log('✅ [platformUtils] Profile created successfully:', data.email);
         
+        // Create preferences asynchronously (don't wait for it)
+        this.createUserPreferences(userId).catch(prefError => {
+          console.error('⚠️ [platformUtils] Failed to create preferences (non-blocking):', prefError);
+        });
+        
+        return data;
+      } catch (createTimeoutError) {
+        console.error('⏰ [platformUtils] Profile creation timed out');
         return null;
       }
-
-      console.log('✅ [platformUtils] Profile created successfully:', data.email);
-      
-      // Also create user preferences
-      await this.createUserPreferences(userId);
-      
-      return data;
     } catch (error) {
-      console.error('💥 [platformUtils] Error creating profile:', error);
+      console.error('💥 [platformUtils] Error in profile creation:', error);
       return null;
     }
   },
@@ -269,13 +286,13 @@ export const platformUtils = {
     }
   },
 
-  // Subscription Management with timeout
+  // Subscription Management with shorter timeout
   async getUserSubscription(userId: string): Promise<UserSubscription | null> {
     console.log('💳 [platformUtils] Getting subscription for user:', userId);
     
     try {
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Subscription fetch timeout')), 10000);
+        setTimeout(() => reject(new Error('Subscription fetch timeout')), 5000); // Reduced timeout
       });
 
       const fetchPromise = supabase
