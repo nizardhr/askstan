@@ -3,196 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut, User, Settings, Send, MessageCircle, CheckCircle, Loader, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
-const runCompleteDatabaseDiagnostic = async () => {
-  console.log('🔍 [DIAGNOSTIC] Starting comprehensive database analysis...');
-  
-  try {
-    // Test 1: Verify authentication
-    console.log('🔐 [DIAGNOSTIC] Test 1: Authentication check');
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError) {
-      console.error('❌ [DIAGNOSTIC] Auth error:', authError);
-      return;
-    }
-    
-    if (!user) {
-      console.error('❌ [DIAGNOSTIC] No authenticated user');
-      return;
-    }
-    
-    console.log('✅ [DIAGNOSTIC] User authenticated:', {
-      id: user.id,
-      email: user.email,
-      created_at: user.created_at
-    });
-
-    // Test 2: Check basic Supabase connectivity
-    console.log('📡 [DIAGNOSTIC] Test 2: Basic Supabase connectivity');
-    
-    try {
-      // Try a simple query that should always work
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('count', { count: 'exact', head: true });
-      
-      console.log('📊 [DIAGNOSTIC] Basic connectivity result:', { data, error });
-    } catch (connError) {
-      console.error('❌ [DIAGNOSTIC] Connectivity error:', connError);
-    }
-
-    // Test 3: Check if user_profiles table exists and structure
-    console.log('🗃️ [DIAGNOSTIC] Test 3: Table structure check');
-    
-    try {
-      // This will show us the table structure or if it doesn't exist
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .limit(0); // Get structure without data
-      
-      console.log('🗃️ [DIAGNOSTIC] Table structure check result:', { data, error });
-      
-      if (error) {
-        console.error('❌ [DIAGNOSTIC] Table might not exist or be accessible:', error.message);
-      }
-    } catch (tableError) {
-      console.error('❌ [DIAGNOSTIC] Table structure error:', tableError);
-    }
-
-    // Test 4: Test RLS policies by trying different query approaches
-    console.log('🔒 [DIAGNOSTIC] Test 4: RLS Policy Analysis');
-    
-    // Try querying without filters
-    try {
-      console.log('🔍 [DIAGNOSTIC] Testing unfiltered query...');
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('id, email')
-        .limit(1);
-      
-      console.log('🔍 [DIAGNOSTIC] Unfiltered query result:', { data, error });
-    } catch (unfilteredError) {
-      console.error('❌ [DIAGNOSTIC] Unfiltered query error:', unfilteredError);
-    }
-
-    // Try querying with user ID filter
-    try {
-      console.log('👤 [DIAGNOSTIC] Testing user-specific query...');
-      
-      // Use a timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Query timeout')), 5000)
-      );
-      
-      const queryPromise = supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', user.id);
-      
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
-      
-      console.log('👤 [DIAGNOSTIC] User-specific query result:', { data, error });
-    } catch (userQueryError) {
-      console.error('❌ [DIAGNOSTIC] User-specific query error:', userQueryError);
-    }
-
-    // Test 5: Check auth.uid() function availability
-    console.log('🔑 [DIAGNOSTIC] Test 5: auth.uid() function check');
-    
-    try {
-      const { data, error } = await supabase.rpc('auth.uid');
-      console.log('🔑 [DIAGNOSTIC] auth.uid() result:', { data, error });
-    } catch (uidError) {
-      console.error('❌ [DIAGNOSTIC] auth.uid() error:', uidError);
-    }
-
-    // Test 6: Try creating a profile (to test INSERT permissions)
-    console.log('➕ [DIAGNOSTIC] Test 6: Profile creation test');
-    
-    try {
-      const email = user.email || `user-${user.id}@temp.local`;
-      
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .insert({
-          id: user.id,
-          email: email,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select();
-      
-      console.log('➕ [DIAGNOSTIC] Profile creation result:', { data, error });
-      
-      if (error?.code === '23505') {
-        console.log('ℹ️ [DIAGNOSTIC] Profile already exists (duplicate key)');
-        
-        // If profile exists, try to fetch it again
-        try {
-          const { data: existingData, error: existingError } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-          
-          console.log('🔍 [DIAGNOSTIC] Existing profile fetch:', { existingData, existingError });
-        } catch (existingFetchError) {
-          console.error('❌ [DIAGNOSTIC] Existing profile fetch error:', existingFetchError);
-        }
-      }
-    } catch (insertError) {
-      console.error('❌ [DIAGNOSTIC] Profile creation error:', insertError);
-    }
-
-    // Test 7: Check session token validity
-    console.log('🎫 [DIAGNOSTIC] Test 7: Session token analysis');
-    
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('❌ [DIAGNOSTIC] Session error:', sessionError);
-      } else if (session) {
-        console.log('✅ [DIAGNOSTIC] Session valid:', {
-          user_id: session.user.id,
-          expires_at: session.expires_at,
-          token_type: session.token_type,
-          access_token_length: session.access_token?.length || 0
-        });
-      } else {
-        console.error('❌ [DIAGNOSTIC] No active session');
-      }
-    } catch (sessionCheckError) {
-      console.error('❌ [DIAGNOSTIC] Session check error:', sessionCheckError);
-    }
-
-    // Test 8: Environment variables check
-    console.log('⚙️ [DIAGNOSTIC] Test 8: Environment configuration');
-    console.log('⚙️ [DIAGNOSTIC] Environment check:', {
-      SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-      ANON_KEY_LENGTH: import.meta.env.VITE_SUPABASE_ANON_KEY?.length || 0,
-      NODE_ENV: import.meta.env.NODE_ENV
-    });
-
-    console.log('✅ [DIAGNOSTIC] Diagnostic complete. Check results above for issues.');
-
-  } catch (error) {
-    console.error('💥 [DIAGNOSTIC] Diagnostic failed:', error);
-  }
-};
-
-// Add this useEffect to your Dashboard component to run the diagnostic
-useEffect(() => {
-  const urlParams = new URLSearchParams(location.search);
-  const sessionId = urlParams.get('session_id');
-
-  if (sessionId && user) {
-    console.log('🚨 [DIAGNOSTIC] Stripe session detected, running database diagnostic...');
-    runCompleteDatabaseDiagnostic();
-  }
-}, [user, location.search]);
-
+import DatabaseDiagnostic from '../components/DatabaseDiagnostic';
 
 const Dashboard: React.FC = () => {
   const { signOut, user, profile, refetchUserData } = useAuth();
@@ -214,6 +25,10 @@ const Dashboard: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [validatingSession, setValidatingSession] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+   // Add this to check if we should show diagnostic
+  const urlParams = new URLSearchParams(location.search);
+  const hasStripeSession = urlParams.has('session_id');
+  const showDiagnostic = hasStripeSession || !profile; // Show if payment flow OR profile loading issues
 
   // Add comprehensive logging
   useEffect(() => {
@@ -557,6 +372,7 @@ const Dashboard: React.FC = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
+          {showDiagnostic && <DatabaseDiagnostic />}
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard</h1>
             <p className="text-gray-600">
