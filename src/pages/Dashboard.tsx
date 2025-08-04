@@ -3,67 +3,117 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut, User, Settings, Send, MessageCircle, CheckCircle, Loader, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
-// Add this diagnostic function to test database connectivity
-// Add this to your Dashboard component temporarily for debugging
-
-const runDatabaseDiagnostic = async () => {
-  console.log('🔍 [Diagnostic] Starting database connectivity test...');
+const runCompleteDatabaseDiagnostic = async () => {
+  console.log('🔍 [DIAGNOSTIC] Starting comprehensive database analysis...');
   
   try {
-    // Test 1: Basic connectivity
-    console.log('📡 [Diagnostic] Test 1: Basic Supabase connectivity');
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Test 1: Verify authentication
+    console.log('🔐 [DIAGNOSTIC] Test 1: Authentication check');
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     
-    if (userError) {
-      console.error('❌ [Diagnostic] Auth error:', userError);
+    if (authError) {
+      console.error('❌ [DIAGNOSTIC] Auth error:', authError);
       return;
     }
     
     if (!user) {
-      console.error('❌ [Diagnostic] No authenticated user');
+      console.error('❌ [DIAGNOSTIC] No authenticated user');
       return;
     }
     
-    console.log('✅ [Diagnostic] Auth working, user ID:', user.id);
-    
-    // Test 2: Check if user_profiles table exists and is accessible
-    console.log('📊 [Diagnostic] Test 2: Checking user_profiles table access');
+    console.log('✅ [DIAGNOSTIC] User authenticated:', {
+      id: user.id,
+      email: user.email,
+      created_at: user.created_at
+    });
+
+    // Test 2: Check basic Supabase connectivity
+    console.log('📡 [DIAGNOSTIC] Test 2: Basic Supabase connectivity');
     
     try {
-      const { data, error, count } = await supabase
+      // Try a simple query that should always work
+      const { data, error } = await supabase
         .from('user_profiles')
-        .select('*', { count: 'exact' })
+        .select('count', { count: 'exact', head: true });
+      
+      console.log('📊 [DIAGNOSTIC] Basic connectivity result:', { data, error });
+    } catch (connError) {
+      console.error('❌ [DIAGNOSTIC] Connectivity error:', connError);
+    }
+
+    // Test 3: Check if user_profiles table exists and structure
+    console.log('🗃️ [DIAGNOSTIC] Test 3: Table structure check');
+    
+    try {
+      // This will show us the table structure or if it doesn't exist
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .limit(0); // Get structure without data
+      
+      console.log('🗃️ [DIAGNOSTIC] Table structure check result:', { data, error });
+      
+      if (error) {
+        console.error('❌ [DIAGNOSTIC] Table might not exist or be accessible:', error.message);
+      }
+    } catch (tableError) {
+      console.error('❌ [DIAGNOSTIC] Table structure error:', tableError);
+    }
+
+    // Test 4: Test RLS policies by trying different query approaches
+    console.log('🔒 [DIAGNOSTIC] Test 4: RLS Policy Analysis');
+    
+    // Try querying without filters
+    try {
+      console.log('🔍 [DIAGNOSTIC] Testing unfiltered query...');
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, email')
         .limit(1);
       
-      console.log('📊 [Diagnostic] user_profiles query result:', { data, error, count });
-    } catch (tableError) {
-      console.error('❌ [Diagnostic] user_profiles table error:', tableError);
+      console.log('🔍 [DIAGNOSTIC] Unfiltered query result:', { data, error });
+    } catch (unfilteredError) {
+      console.error('❌ [DIAGNOSTIC] Unfiltered query error:', unfilteredError);
     }
-    
-    // Test 3: Try to query with the specific user ID
-    console.log('👤 [Diagnostic] Test 3: Querying specific user profile');
-    
+
+    // Try querying with user ID filter
     try {
-      const { data, error } = await supabase
+      console.log('👤 [DIAGNOSTIC] Testing user-specific query...');
+      
+      // Use a timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout')), 5000)
+      );
+      
+      const queryPromise = supabase
         .from('user_profiles')
         .select('*')
         .eq('id', user.id);
       
-      console.log('👤 [Diagnostic] Specific user query result:', { data, error });
-    } catch (specificError) {
-      console.error('❌ [Diagnostic] Specific user query error:', specificError);
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+      
+      console.log('👤 [DIAGNOSTIC] User-specific query result:', { data, error });
+    } catch (userQueryError) {
+      console.error('❌ [DIAGNOSTIC] User-specific query error:', userQueryError);
     }
-    
-    // Test 4: Check RLS policies
-    console.log('🔒 [Diagnostic] Test 4: Testing RLS bypass with service role (if available)');
-    
-    // Test 5: Try a simple insert to see if we can create a profile
-    console.log('➕ [Diagnostic] Test 5: Attempting to create user profile');
+
+    // Test 5: Check auth.uid() function availability
+    console.log('🔑 [DIAGNOSTIC] Test 5: auth.uid() function check');
     
     try {
-      const email = user.email || user.user_metadata?.email || `user-${user.id}@temp.local`;
+      const { data, error } = await supabase.rpc('auth.uid');
+      console.log('🔑 [DIAGNOSTIC] auth.uid() result:', { data, error });
+    } catch (uidError) {
+      console.error('❌ [DIAGNOSTIC] auth.uid() error:', uidError);
+    }
+
+    // Test 6: Try creating a profile (to test INSERT permissions)
+    console.log('➕ [DIAGNOSTIC] Test 6: Profile creation test');
+    
+    try {
+      const email = user.email || `user-${user.id}@temp.local`;
       
-      const { data: insertData, error: insertError } = await supabase
+      const { data, error } = await supabase
         .from('user_profiles')
         .insert({
           id: user.id,
@@ -73,58 +123,77 @@ const runDatabaseDiagnostic = async () => {
         })
         .select();
       
-      console.log('➕ [Diagnostic] Insert result:', { insertData, insertError });
+      console.log('➕ [DIAGNOSTIC] Profile creation result:', { data, error });
       
-      if (insertError && insertError.code === '23505') {
-        console.log('ℹ️ [Diagnostic] Profile already exists (duplicate key error)');
+      if (error?.code === '23505') {
+        console.log('ℹ️ [DIAGNOSTIC] Profile already exists (duplicate key)');
         
-        // Try to fetch it again
-        const { data: existingData, error: existingError } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        
-        console.log('🔍 [Diagnostic] Existing profile fetch:', { existingData, existingError });
+        // If profile exists, try to fetch it again
+        try {
+          const { data: existingData, error: existingError } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+          
+          console.log('🔍 [DIAGNOSTIC] Existing profile fetch:', { existingData, existingError });
+        } catch (existingFetchError) {
+          console.error('❌ [DIAGNOSTIC] Existing profile fetch error:', existingFetchError);
+        }
       }
-      
     } catch (insertError) {
-      console.error('❌ [Diagnostic] Insert error:', insertError);
+      console.error('❌ [DIAGNOSTIC] Profile creation error:', insertError);
     }
-    
-    // Test 6: Check subscription table
-    console.log('💳 [Diagnostic] Test 6: Checking user_subscriptions table');
+
+    // Test 7: Check session token validity
+    console.log('🎫 [DIAGNOSTIC] Test 7: Session token analysis');
     
     try {
-      const { data: subData, error: subError } = await supabase
-        .from('user_subscriptions')
-        .select('*')
-        .eq('user_id', user.id);
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      console.log('💳 [Diagnostic] Subscription query result:', { subData, subError });
-    } catch (subError) {
-      console.error('❌ [Diagnostic] Subscription query error:', subError);
+      if (sessionError) {
+        console.error('❌ [DIAGNOSTIC] Session error:', sessionError);
+      } else if (session) {
+        console.log('✅ [DIAGNOSTIC] Session valid:', {
+          user_id: session.user.id,
+          expires_at: session.expires_at,
+          token_type: session.token_type,
+          access_token_length: session.access_token?.length || 0
+        });
+      } else {
+        console.error('❌ [DIAGNOSTIC] No active session');
+      }
+    } catch (sessionCheckError) {
+      console.error('❌ [DIAGNOSTIC] Session check error:', sessionCheckError);
     }
-    
-    console.log('✅ [Diagnostic] Database diagnostic complete');
-    
+
+    // Test 8: Environment variables check
+    console.log('⚙️ [DIAGNOSTIC] Test 8: Environment configuration');
+    console.log('⚙️ [DIAGNOSTIC] Environment check:', {
+      SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+      ANON_KEY_LENGTH: import.meta.env.VITE_SUPABASE_ANON_KEY?.length || 0,
+      NODE_ENV: import.meta.env.NODE_ENV
+    });
+
+    console.log('✅ [DIAGNOSTIC] Diagnostic complete. Check results above for issues.');
+
   } catch (error) {
-    console.error('💥 [Diagnostic] Diagnostic failed:', error);
+    console.error('💥 [DIAGNOSTIC] Diagnostic failed:', error);
   }
 };
 
-// Call this function in your Dashboard component useEffect
-// Add this to the Dashboard component:
-
+// Add this useEffect to your Dashboard component to run the diagnostic
 useEffect(() => {
   const urlParams = new URLSearchParams(location.search);
   const sessionId = urlParams.get('session_id');
 
   if (sessionId && user) {
-    console.log('🔍 Starting database diagnostic...');
-    runDatabaseDiagnostic();
+    console.log('🚨 [DIAGNOSTIC] Stripe session detected, running database diagnostic...');
+    runCompleteDatabaseDiagnostic();
   }
 }, [user, location.search]);
+
+
 const Dashboard: React.FC = () => {
   const { signOut, user, profile, refetchUserData } = useAuth();
   const navigate = useNavigate();
