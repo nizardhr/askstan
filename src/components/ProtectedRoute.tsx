@@ -140,7 +140,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       
       if (!isInTrial && !isPastDue) {
         console.log('🛡️ [ProtectedRoute] No active subscription, redirecting to pricing');
-        return <Navigate to="/pricing" state={{ from: location }} replace />;
+        return <Navigate to="/subscribe" state={{ from: location }} replace />;
       }
     }
   }
