@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { priceId, userId, planType } = await req.json()
+    const { priceId, userId, planType, promoCode, promotionCodeId } = await req.json()
 
     if (!priceId || !userId || !planType) {
       throw new Error('Missing required parameters: priceId, userId, or planType')
@@ -39,8 +39,8 @@ Deno.serve(async (req) => {
       throw new Error('User profile not found')
     }
 
-    // Create Stripe checkout session
-    const session = await stripe.checkout.sessions.create({
+    // Prepare checkout session configuration
+    const sessionConfig: Stripe.Checkout.SessionCreateParams = {
       customer_email: profile.email,
       line_items: [
         {
@@ -64,7 +64,23 @@ Deno.serve(async (req) => {
       allow_promotion_codes: true,
       billing_address_collection: 'auto',
       customer_creation: 'always',
-    })
+    }
+
+    // Add promo code if provided
+    if (promoCode && promotionCodeId) {
+      sessionConfig.discounts = [
+        {
+          promotion_code: promotionCodeId,
+        },
+      ]
+      
+      // Add promo code to metadata for tracking
+      sessionConfig.metadata!.promoCode = promoCode
+      sessionConfig.subscription_data!.metadata!.promoCode = promoCode
+    }
+
+    // Create Stripe checkout session
+    const session = await stripe.checkout.sessions.create(sessionConfig)
 
     return new Response(
       JSON.stringify({ url: session.url }),

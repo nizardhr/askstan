@@ -165,6 +165,7 @@ export const useAuth = () => {
     signUp,
     signIn,
     signOut,
+    resetPassword,
     updatePassword,
     updateProfile,
     hasActiveSubscription,

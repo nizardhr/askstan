@@ -41,11 +41,26 @@ Deno.serve(async (req) => {
         if (session.customer && session.subscription && session.metadata?.userId) {
           const userId = session.metadata.userId
           const planType = session.metadata.planType || 'monthly'
+          const promoCode = session.metadata.promoCode || null
 
           // Get subscription details from Stripe
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
 
-          // Create or update subscription
+          // Extract discount information if promo code was used
+          let discountAmount = null
+          let discountPercentage = null
+
+          if (subscription.discount) {
+            const coupon = subscription.discount.coupon
+            if (coupon.amount_off) {
+              discountAmount = coupon.amount_off
+            }
+            if (coupon.percent_off) {
+              discountPercentage = coupon.percent_off
+            }
+          }
+
+          // Create or update subscription with promo code data
           const { error } = await supabase
             .from('user_subscriptions')
             .upsert({
@@ -59,6 +74,9 @@ Deno.serve(async (req) => {
               current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
               trial_start: subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null,
               trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+              promo_code: promoCode,
+              discount_amount: discountAmount,
+              discount_percentage: discountPercentage,
               updated_at: new Date().toISOString(),
             }, {
               onConflict: 'user_id'
@@ -67,7 +85,7 @@ Deno.serve(async (req) => {
           if (error) {
             console.error('Error creating subscription:', error)
           } else {
-            console.log('Subscription created for user:', userId)
+            console.log('Subscription created for user:', userId, 'with promo code:', promoCode)
           }
         }
         break
@@ -158,16 +176,32 @@ Deno.serve(async (req) => {
                       subscription.status === 'incomplete' ? 'incomplete' :
                       subscription.status === 'incomplete_expired' ? 'incomplete_expired' : 'inactive'
 
+        // Extract discount information if present
+        let discountAmount = null
+        let discountPercentage = null
+
+        if (subscription.discount) {
+          const coupon = subscription.discount.coupon
+          if (coupon.amount_off) {
+            discountAmount = coupon.amount_off
+          }
+          if (coupon.percent_off) {
+            discountPercentage = coupon.percent_off
+          }
+        }
+
         const { error } = await supabase
-          .rpc('update_subscription_from_stripe', {
-            stripe_customer_id_param: subscription.customer as string,
-            stripe_subscription_id_param: subscription.id,
-            status_param: status,
-            plan_type_param: null, // Will be preserved from existing data
-            current_period_start_param: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end_param: new Date(subscription.current_period_end * 1000).toISOString(),
-            cancel_at_period_end_param: subscription.cancel_at_period_end
+          .from('user_subscriptions')
+          .update({
+            status: status,
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            discount_amount: discountAmount,
+            discount_percentage: discountPercentage,
+            updated_at: new Date().toISOString(),
           })
+          .eq('stripe_subscription_id', subscription.id)
 
         if (error) {
           console.error('Error updating subscription:', error)

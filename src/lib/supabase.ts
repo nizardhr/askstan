@@ -29,6 +29,7 @@ export type UserSubscription = {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
+  stripe_price_id: string | null;
   status: 'active' | 'inactive' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'incomplete' | 'incomplete_expired';
   plan_type: 'monthly' | 'yearly' | null;
   current_period_start: string | null;
@@ -37,6 +38,9 @@ export type UserSubscription = {
   canceled_at: string | null;
   trial_start: string | null;
   trial_end: string | null;
+  promo_code: string | null;
+  discount_amount: number | null;
+  discount_percentage: number | null;
   created_at: string;
   updated_at: string;
 };
