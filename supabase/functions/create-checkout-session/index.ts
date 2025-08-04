@@ -9,11 +9,13 @@ const corsHeaders = {
 }
 
 Deno.serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    // Initialize Stripe and Supabase
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
       apiVersion: '2024-12-18.acacia',
     })
@@ -23,10 +25,17 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Parse request body
     const { priceId, userId, planType, promoCode, promotionCodeId } = await req.json()
 
     if (!priceId || !userId || !planType) {
-      throw new Error('Missing required parameters: priceId, userId, or planType')
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameters: priceId, userId, or planType' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      )
     }
 
     // Get user profile
@@ -37,7 +46,14 @@ Deno.serve(async (req) => {
       .single()
 
     if (profileError || !profile) {
-      throw new Error('User profile not found')
+      console.error('User profile error:', profileError)
+      return new Response(
+        JSON.stringify({ error: 'User profile not found' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 404,
+        }
+      )
     }
 
     // Prepare checkout session configuration
@@ -50,8 +66,8 @@ Deno.serve(async (req) => {
         },
       ],
       mode: 'subscription',
-      success_url: `${Deno.env.get('NEXT_PUBLIC_APP_URL') || 'http://localhost:5173'}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${Deno.env.get('NEXT_PUBLIC_APP_URL') || 'http://localhost:5173'}/subscribe`,
+      success_url: `${Deno.env.get('VITE_APP_URL') || 'https://askstan.io'}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${Deno.env.get('VITE_APP_URL') || 'https://askstan.io'}/subscribe`,
       metadata: {
         userId: userId,
         planType: planType,
@@ -65,38 +81,74 @@ Deno.serve(async (req) => {
       allow_promotion_codes: true,
       billing_address_collection: 'auto',
       customer_creation: 'always',
+      payment_method_collection: 'if_required',
     }
 
-    // Add promo code if provided
+    // Add promo code if provided and valid
     if (promoCode && promotionCodeId) {
-      sessionConfig.discounts = [
-        {
-          promotion_code: promotionCodeId,
-        },
-      ]
+      console.log('Applying promo code to checkout session:', promoCode, promotionCodeId)
       
-      // Add promo code to metadata for tracking
-      sessionConfig.metadata!.promoCode = promoCode
-      sessionConfig.subscription_data!.metadata!.promoCode = promoCode
+      // Validate the promotion code exists in Stripe
+      try {
+        const promotionCode = await stripe.promotionCodes.retrieve(promotionCodeId)
+        
+        if (promotionCode.active && promotionCode.code.toUpperCase() === promoCode.toUpperCase()) {
+          sessionConfig.discounts = [
+            {
+              promotion_code: promotionCodeId,
+            },
+          ]
+          
+          // Add promo code to metadata for tracking
+          sessionConfig.metadata!.promoCode = promoCode
+          sessionConfig.subscription_data!.metadata!.promoCode = promoCode
+          sessionConfig.subscription_data!.metadata!.promotionCodeId = promotionCodeId
+          
+          console.log('Promo code applied successfully to checkout session')
+        } else {
+          console.warn('Promotion code validation failed:', promotionCode)
+        }
+      } catch (promoError) {
+        console.error('Error validating promotion code for checkout:', promoError)
+        // Continue without promo code if validation fails
+      }
     }
 
     // Create Stripe checkout session
+    console.log('Creating Stripe checkout session with config:', {
+      customer_email: sessionConfig.customer_email,
+      mode: sessionConfig.mode,
+      has_discounts: !!sessionConfig.discounts,
+      metadata: sessionConfig.metadata,
+    })
+
     const session = await stripe.checkout.sessions.create(sessionConfig)
 
+    console.log('Checkout session created successfully:', session.id)
+
     return new Response(
-      JSON.stringify({ url: session.url }),
+      JSON.stringify({ 
+        url: session.url,
+        sessionId: session.id,
+        hasDiscount: !!sessionConfig.discounts,
+        promoCode: promoCode || null,
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       }
     )
   } catch (err) {
-    console.error('Checkout session error:', err)
+    console.error('Checkout session creation error:', err)
+    
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ 
+        error: 'Failed to create checkout session. Please try again or contact support.',
+        details: err.message 
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        status: 500,
       }
     )
   }
