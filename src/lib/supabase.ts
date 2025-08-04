@@ -130,6 +130,22 @@ export type UserAchievement = {
   metadata: Record<string, any>;
 };
 
+export type PromoCodeUsage = {
+  id: string;
+  user_id: string;
+  subscription_id: string | null;
+  promo_code: string;
+  stripe_promotion_code_id: string | null;
+  stripe_coupon_id: string | null;
+  discount_type: 'percentage' | 'amount';
+  discount_value: number;
+  discount_amount_cents: number | null;
+  currency: string;
+  applied_at: string;
+  metadata: Record<string, any>;
+  created_at: string;
+};
+
 export type UserSession = {
   id: string;
   user_id: string;
