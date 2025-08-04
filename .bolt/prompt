@@ -2,4 +2,125 @@ For all designs I ask you to make, have them be beautiful, not cookie cutter. Ma
 
 By default, this template supports JSX syntax with Tailwind CSS classes, React hooks, and Lucide React for icons. Do not install other packages for UI themes, icons, etc unless absolutely necessary or I request them.
 
-Use icons from lucide-react for logos.
+You are tasked with building and debugging a Stripe-integrated SaaS platform with Supabase backend for the domain askstan.io. Follow these instructions carefully to build the frontend, backend, and fix deployment issues end-to-end:
+
+1. Project Scope Overview
+Tech Stack:
+
+Frontend: React (Vite), TailwindCSS
+
+Backend: Supabase (Auth, Database, Edge Functions)
+
+Payments: Stripe Checkout Sessions with Promo Codes
+
+Deployment: Netlify (Frontend), Supabase Edge Functions (API)
+
+Main Features:
+
+User Authentication (Sign up, Login, Forgot Password)
+
+Stripe Subscription Plans (Monthly/Yearly) with Promo Code Validation
+
+Stripe Customer Portal (Manage Billing)
+
+Dashboard after Login
+
+2. Supabase Setup
+Configure Supabase Auth:
+
+Custom SMTP via SendGrid to send confirmation/reset password emails.
+
+Ensure SITE_URL in Supabase Auth Settings points to https://askstan.io.
+
+Create Database Tables:
+
+user_profiles (id [PK], email, name, etc.)
+
+Optional tables for subscription tracking if needed.
+
+Enable Supabase Edge Functions:
+
+Structure: /functions/create-checkout-session/index.ts
+
+Structure: /functions/validate-promo-code/index.ts
+
+3. Stripe Setup
+Create Products & Prices (Monthly & Yearly Subscriptions).
+
+Create Promo Codes inside Stripe Dashboard.
+
+API Keys Required:
+
+STRIPE_SECRET_KEY → Used in Edge Functions
+
+STRIPE_PUBLISHABLE_KEY → Frontend ENV
+
+4. Environment Variables
+Store these securely:
+
+In Netlify for Frontend:
+
+VITE_SUPABASE_URL
+
+VITE_SUPABASE_ANON_KEY
+
+VITE_STRIPE_PUBLISHABLE_KEY
+
+VITE_APP_URL = https://askstan.io
+
+In GitHub Repository Secrets (For Edge Functions deployment via GitHub Actions):
+
+SUPABASE_URL
+
+SUPABASE_SERVICE_ROLE_KEY
+
+STRIPE_SECRET_KEY
+
+5. Supabase Edge Functions
+Validate Promo Code (functions/validate-promo-code/index.ts):
+
+Accept a promo code.
+
+Check its validity using Stripe API.
+
+Return promo code details or error.
+
+Create Checkout Session (functions/create-checkout-session/index.ts):
+
+Accept userId, priceId, planType, promoCode.
+
+Retrieve user email from user_profiles.
+
+Create Stripe Checkout Session.
+
+Attach Promo Code if valid.
+
+Return the Checkout URL.
+
+⚠️ Ensure CORS headers are properly set to allow https://askstan.io.
+
+6. Frontend Stripe Integration
+Use Stripe.js & @stripe/react-stripe-js.
+
+Flow:
+
+User clicks Subscribe (Monthly/Yearly).
+
+Call validate-promo-code if promo code is entered.
+
+Call create-checkout-session to get Checkout URL.
+
+Redirect to Stripe Checkout.
+
+After payment success, redirect back to /dashboard.
+
+8. Debugging Instructions
+If CORS issues happen → Check Access-Control-Allow-Origin headers in Edge Functions.
+
+If Supabase functions return 500 → Check for missing environment variables.
+
+If Stripe promo codes are not applied → Validate Promo Code logic against Stripe API.
+
+If Emails (Sign up, Forgot Password) fail → Check SendGrid DNS records (SPF, DKIM) in Namecheap and Supabase SMTP settings.
+
+If Functions not reachable → Ensure Edge Functions deployment succeeded in GitHub Actions.
