@@ -134,11 +134,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     const userHasActiveSubscription = hasActiveSubscription();
     
     if (!userHasActiveSubscription && !loading) {
-      // Check if user is in trial or past due (still allow access)
+      // Check if user has completed onboarding or has valid subscription
+      const hasCompletedOnboarding = profile?.onboarding_completed === true;
       const isInTrial = subscription?.status === 'trialing';
       const isPastDue = subscription?.status === 'past_due';
       
-      if (!isInTrial && !isPastDue) {
+      if (!isInTrial && !isPastDue && !hasCompletedOnboarding) {
         console.log('🛡️ [ProtectedRoute] No active subscription, redirecting to pricing');
         return <Navigate to="/subscribe" state={{ from: location }} replace />;
       }
