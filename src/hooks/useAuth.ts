@@ -94,7 +94,7 @@ export const useAuth = () => {
         console.log('✅ [useAuth] Profile found:', profileData.email);
         setProfile(profileData);
       } else {
-        console.warn('⚠️ [useAuth] No profile found for user:', userId);
+        console.warn('⚠️ [useAuth] No profile could be created/found for user:', userId);
         // Set profile to null to indicate no profile exists
         setProfile(null);
       }
@@ -114,9 +114,8 @@ export const useAuth = () => {
     } catch (error) {
       console.error('❌ [useAuth] Error fetching user data:', error);
       
-      // Set profile to null if there's an error
-      // This will trigger the "Setting up your account..." screen
-      setProfile(null);
+      // Don't set profile to null if there's an error - this might be temporary
+      // setProfile(null);
       setSubscription(null);
       
       // Don't throw the error - let the app continue

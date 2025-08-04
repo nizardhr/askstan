@@ -9,16 +9,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Comprehensive TypeScript types for the complete platform schema
+// Type definitions
 export type UserProfile = {
   id: string;
   email: string;
-  full_name: string | null;
-  avatar_url: string | null;
-  timezone: string;
-  onboarding_completed: boolean;
-  last_active_at: string;
-  preferences: Record<string, any>;
+  name?: string;
+  avatar_url?: string;
+  subscription_status?: string;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
   created_at: string;
   updated_at: string;
 };
@@ -26,21 +25,16 @@ export type UserProfile = {
 export type UserSubscription = {
   id: string;
   user_id: string;
-  stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
-  stripe_price_id: string | null;
-  stripe_price_id: string | null;
-  status: 'active' | 'inactive' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'incomplete' | 'incomplete_expired';
-  plan_type: 'monthly' | 'yearly' | null;
-  current_period_start: string | null;
-  current_period_end: string | null;
-  cancel_at_period_end: boolean;
-  canceled_at: string | null;
-  trial_start: string | null;
-  trial_end: string | null;
-  promo_code: string | null;
-  discount_amount: number | null;
-  discount_percentage: number | null;
+  stripe_customer_id: string;
+  stripe_subscription_id: string;
+  stripe_price_id: string;
+  status: 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'trialing' | 'unpaid';
+  plan_type: 'monthly' | 'yearly';
+  current_period_start: string;
+  current_period_end: string;
+  trial_start?: string;
+  trial_end?: string;
+  canceled_at?: string;
   created_at: string;
   updated_at: string;
 };
@@ -48,15 +42,12 @@ export type UserSubscription = {
 export type BillingHistory = {
   id: string;
   user_id: string;
-  subscription_id: string | null;
-  stripe_invoice_id: string | null;
-  stripe_payment_intent_id: string | null;
+  stripe_invoice_id: string;
   amount: number;
   currency: string;
-  status: 'paid' | 'pending' | 'failed' | 'refunded' | 'canceled';
-  invoice_url: string | null;
-  receipt_url: string | null;
-  paid_at: string | null;
+  status: 'pending' | 'paid' | 'failed' | 'refunded';
+  invoice_url?: string;
+  paid_at?: string;
   created_at: string;
 };
 
@@ -66,8 +57,7 @@ export type ChatConversation = {
   title: string;
   last_message_at: string;
   message_count: number;
-  is_archived: boolean;
-  metadata: Record<string, any>;
+  is_archived?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -96,40 +86,6 @@ export type UserPreferences = {
   updated_at: string;
 };
 
-export type GrowthMetrics = {
-  id: string;
-  user_id: string;
-  platform: 'linkedin' | 'twitter' | 'instagram' | 'threads' | 'tiktok' | 'facebook' | 'youtube';
-  metric_type: string;
-  metric_value: number;
-  recorded_at: string;
-  metadata: Record<string, any>;
-  created_at: string;
-};
-
-export type ContentTemplate = {
-  id: string;
-  title: string;
-  description: string | null;
-  platform: 'linkedin' | 'twitter' | 'instagram' | 'threads' | 'tiktok' | 'facebook' | 'youtube';
-  category: string;
-  template_content: string;
-  tags: string[];
-  is_premium: boolean;
-  usage_count: number;
-  created_at: string;
-  updated_at: string;
-};
-
-export type UserAchievement = {
-  id: string;
-  user_id: string;
-  achievement_type: string;
-  platform: 'linkedin' | 'twitter' | 'instagram' | 'threads' | 'tiktok' | 'facebook' | 'youtube' | null;
-  achieved_at: string;
-  metadata: Record<string, any>;
-};
-
 export type UserSession = {
   id: string;
   user_id: string;
@@ -151,107 +107,244 @@ export type PromoCodeUsage = {
   subscription_id: string | null;
 };
 
-// Comprehensive utility functions for platform management
+// Fixed platformUtils with timeout protection and auto profile creation
 export const platformUtils = {
-  // User Profile Management
+  // User Profile Management with timeout and auto-creation
   async getUserProfile(userId: string): Promise<UserProfile | null> {
+    console.log('🔍 [platformUtils] Getting profile for user:', userId);
+    
     try {
-      const { data, error } = await supabase
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000); // 10 second timeout
+      });
+
+      const fetchPromise = supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+
       if (error) {
-        console.error('Error fetching user profile:', error);
+        console.error('❌ [platformUtils] Error fetching user profile:', error);
+        
+        // If profile doesn't exist, try to create it
+        if (error.code === 'PGRST116' || error.message?.includes('no rows returned')) {
+          console.log('🔧 [platformUtils] Profile not found, attempting to create...');
+          return await this.createUserProfile(userId);
+        }
+        
         return null;
       }
 
+      if (!data) {
+        console.log('ℹ️ [platformUtils] No profile found, attempting to create...');
+        return await this.createUserProfile(userId);
+      }
+
+      console.log('✅ [platformUtils] Profile found:', data.email);
+      return data;
+    } catch (error: any) {
+      console.error('💥 [platformUtils] Unexpected error fetching profile:', error);
+      
+      if (error.message === 'Profile fetch timeout') {
+        console.error('⏰ [platformUtils] Profile fetch timed out');
+        return null;
+      }
+      
+      // Try to create profile if fetch failed
+      console.log('🔧 [platformUtils] Fetch failed, attempting to create profile...');
+      return await this.createUserProfile(userId);
+    }
+  },
+
+  // Create missing user profile
+  async createUserProfile(userId: string): Promise<UserProfile | null> {
+    console.log('🔨 [platformUtils] Creating profile for user:', userId);
+    
+    try {
+      // Get user info from auth.users
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        console.error('❌ [platformUtils] Could not get user info:', userError);
+        return null;
+      }
+
+      if (user.id !== userId) {
+        console.error('❌ [platformUtils] User ID mismatch');
+        return null;
+      }
+
+      const email = user.email || user.user_metadata?.email || `user-${userId}@temp.local`;
+      
+      console.log('📧 [platformUtils] Creating profile with email:', email);
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: userId,
+          email: email,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ [platformUtils] Error creating profile:', error);
+        return null;
+      }
+
+      console.log('✅ [platformUtils] Profile created successfully:', data.email);
+      
+      // Also create user preferences
+      await this.createUserPreferences(userId);
+      
       return data;
     } catch (error) {
-      console.error('Error fetching user profile:', error);
+      console.error('💥 [platformUtils] Error creating profile:', error);
       return null;
+    }
+  },
+
+  // Create user preferences if they don't exist
+  async createUserPreferences(userId: string): Promise<void> {
+    console.log('🔧 [platformUtils] Creating preferences for user:', userId);
+    
+    try {
+      const { error } = await supabase
+        .from('user_preferences')
+        .insert({
+          user_id: userId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error && !error.message?.includes('duplicate key')) {
+        console.error('❌ [platformUtils] Error creating preferences:', error);
+      } else {
+        console.log('✅ [platformUtils] Preferences created');
+      }
+    } catch (error) {
+      console.error('💥 [platformUtils] Error creating preferences:', error);
     }
   },
 
   async updateUserProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile | null> {
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error updating user profile:', error);
-      return null;
-    }
-
-    return data;
-  },
-
-  // Subscription Management
-  async getUserSubscription(userId: string): Promise<UserSubscription | null> {
+    console.log('🔄 [platformUtils] Updating profile for user:', userId);
+    
     try {
       const { data, error } = await supabase
-        .from('user_subscriptions')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle(); // Use maybeSingle() instead of single() to handle no rows
+        .from('user_profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+        .select()
+        .single();
 
       if (error) {
-        console.error('Error fetching subscription:', error);
+        console.error('❌ [platformUtils] Error updating profile:', error);
         return null;
       }
 
-      return data; // Will be null if no subscription exists, which is fine for new users
+      console.log('✅ [platformUtils] Profile updated');
+      return data;
     } catch (error) {
-      console.error('Error fetching subscription:', error);
+      console.error('💥 [platformUtils] Error updating profile:', error);
+      return null;
+    }
+  },
+
+  // Subscription Management with timeout
+  async getUserSubscription(userId: string): Promise<UserSubscription | null> {
+    console.log('💳 [platformUtils] Getting subscription for user:', userId);
+    
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Subscription fetch timeout')), 10000);
+      });
+
+      const fetchPromise = supabase
+        .from('user_subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+
+      if (error) {
+        console.error('❌ [platformUtils] Error fetching subscription:', error);
+        return null;
+      }
+
+      if (data) {
+        console.log('✅ [platformUtils] Subscription found:', data.status);
+      } else {
+        console.log('ℹ️ [platformUtils] No subscription found (normal for new users)');
+      }
+
+      return data;
+    } catch (error: any) {
+      if (error.message === 'Subscription fetch timeout') {
+        console.error('⏰ [platformUtils] Subscription fetch timed out');
+      } else {
+        console.error('💥 [platformUtils] Error fetching subscription:', error);
+      }
       return null;
     }
   },
 
   async hasActiveSubscription(userId: string): Promise<boolean> {
-    const { data, error } = await supabase
-      .rpc('user_has_active_subscription', { user_uuid: userId });
+    try {
+      const { data, error } = await supabase
+        .rpc('user_has_active_subscription', { user_uuid: userId });
 
-    if (error) {
+      if (error) {
+        console.error('Error checking subscription status:', error);
+        return false;
+      }
+
+      return data || false;
+    } catch (error) {
       console.error('Error checking subscription status:', error);
       return false;
     }
-
-    return data || false;
   },
 
   async getSubscriptionStatus(userId: string): Promise<string> {
-    const { data, error } = await supabase
-      .rpc('get_user_subscription_status', { user_uuid: userId });
+    try {
+      const { data, error } = await supabase
+        .rpc('get_user_subscription_status', { user_uuid: userId });
 
-    if (error) {
+      if (error) {
+        console.error('Error getting subscription status:', error);
+        return 'inactive';
+      }
+
+      return data || 'inactive';
+    } catch (error) {
       console.error('Error getting subscription status:', error);
       return 'inactive';
     }
-
-    return data || 'inactive';
   },
 
-  // Billing Management
-  async getBillingHistory(userId: string): Promise<BillingHistory[]> {
-    const { data, error } = await supabase
-      .from('billing_history')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+  // Activity Tracking with error handling
+  async updateUserActivity(userId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .rpc('update_user_activity', { user_uuid: userId });
 
-    if (error) {
-      console.error('Error fetching billing history:', error);
-      return [];
+      if (error) {
+        console.error('Error updating user activity:', error);
+      }
+    } catch (error) {
+      console.error('Error updating user activity:', error);
     }
-
-    return data || [];
   },
 
   // Chat Management
@@ -290,232 +383,20 @@ export const platformUtils = {
     return data || [];
   },
 
-  async createConversation(userId: string, title: string = 'New Conversation'): Promise<ChatConversation | null> {
+  // Billing Management
+  async getBillingHistory(userId: string): Promise<BillingHistory[]> {
     const { data, error } = await supabase
-      .from('chat_conversations')
-      .insert({
-        user_id: userId,
-        title,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating conversation:', error);
-      return null;
-    }
-
-    return data;
-  },
-
-  async addMessage(conversationId: string, userId: string, content: string, role: 'user' | 'assistant' | 'system' = 'user'): Promise<ChatMessage | null> {
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .insert({
-        conversation_id: conversationId,
-        user_id: userId,
-        content,
-        role,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error adding message:', error);
-      return null;
-    }
-
-    return data;
-  },
-
-  // User Preferences
-  async getUserPreferences(userId: string): Promise<UserPreferences | null> {
-    const { data, error } = await supabase
-      .from('user_preferences')
+      .from('billing_history')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching user preferences:', error);
-      return null;
-    }
-
-    return data;
-  },
-
-  async updateUserPreferences(userId: string, updates: Partial<UserPreferences>): Promise<UserPreferences | null> {
-    const { data, error } = await supabase
-      .from('user_preferences')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', userId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error updating user preferences:', error);
-      return null;
-    }
-
-    return data;
-  },
-
-  // Growth Metrics
-  async recordGrowthMetric(
-    userId: string, 
-    platform: string, 
-    metricType: string, 
-    metricValue: number, 
-    metadata: Record<string, any> = {}
-  ): Promise<GrowthMetrics | null> {
-    const { data, error } = await supabase
-      .from('growth_metrics')
-      .insert({
-        user_id: userId,
-        platform,
-        metric_type: metricType,
-        metric_value: metricValue,
-        metadata,
-        recorded_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error recording growth metric:', error);
-      return null;
-    }
-
-    return data;
-  },
-
-  async getGrowthMetrics(userId: string, platform?: string, days: number = 30): Promise<GrowthMetrics[]> {
-    let query = supabase
-      .from('growth_metrics')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('recorded_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
-
-    if (platform) {
-      query = query.eq('platform', platform);
-    }
-
-    const { data, error } = await query.order('recorded_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching growth metrics:', error);
+      console.error('Error fetching billing history:', error);
       return [];
     }
 
     return data || [];
-  },
-
-  // Content Templates
-  async getContentTemplates(platform?: string, category?: string, premiumOnly: boolean = false): Promise<ContentTemplate[]> {
-    let query = supabase.from('content_templates').select('*');
-
-    if (platform) {
-      query = query.eq('platform', platform);
-    }
-
-    if (category) {
-      query = query.eq('category', category);
-    }
-
-    if (premiumOnly) {
-      query = query.eq('is_premium', true);
-    }
-
-    const { data, error } = await query.order('usage_count', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching content templates:', error);
-      return [];
-    }
-
-    return data || [];
-  },
-
-  async incrementTemplateUsage(templateId: string): Promise<void> {
-    const { error } = await supabase
-      .from('content_templates')
-      .update({
-        usage_count: supabase.sql`usage_count + 1`,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', templateId);
-
-    if (error) {
-      console.error('Error incrementing template usage:', error);
-    }
-  },
-
-  // User Achievements
-  async getUserAchievements(userId: string): Promise<UserAchievement[]> {
-    const { data, error } = await supabase
-      .from('user_achievements')
-      .select('*')
-      .eq('user_id', userId)
-      .order('achieved_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching user achievements:', error);
-      return [];
-    }
-
-    return data || [];
-  },
-
-  async awardAchievement(
-    userId: string, 
-    achievementType: string, 
-    platform?: string, 
-    metadata: Record<string, any> = {}
-  ): Promise<boolean> {
-    const { data, error } = await supabase
-      .rpc('award_achievement', {
-        user_uuid: userId,
-        achievement_type_param: achievementType,
-        platform_param: platform,
-        metadata_param: metadata,
-      });
-
-    if (error) {
-      console.error('Error awarding achievement:', error);
-      return false;
-    }
-
-    return data || false;
-  },
-
-  // User Stats
-  async getUserStats(userId: string): Promise<any> {
-    const { data, error } = await supabase
-      .rpc('get_user_stats', { user_uuid: userId });
-
-    if (error) {
-      console.error('Error fetching user stats:', error);
-      return {};
-    }
-
-    return data || {};
-  },
-
-  // Activity Tracking
-  async updateUserActivity(userId: string): Promise<void> {
-    const { error } = await supabase
-      .rpc('update_user_activity', { user_uuid: userId });
-
-    if (error) {
-      console.error('Error updating user activity:', error);
-    }
   },
 
   // Session Management
@@ -668,7 +549,6 @@ export type Subscription = UserSubscription;
 export const subscriptionUtils = {
   getUserSubscriptionDetails: platformUtils.getUserSubscription,
   hasActiveSubscription: platformUtils.hasActiveSubscription,
-  getUserStats: platformUtils.getUserStats,
   getBillingHistory: platformUtils.getBillingHistory,
   getConversations: platformUtils.getConversations,
   getMessages: platformUtils.getMessages,
