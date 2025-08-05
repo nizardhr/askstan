@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
         if (promotionCode.active && promotionCode.coupon.percent_off === 100) {
           is100PercentDiscount = true;
           validatedPromoCode = promotionCode;
-          console.log('100% discount detected - will create free subscription');
+          console.log('💯 100% discount detected - creating free subscription');
         }
       } catch (promoError) {
         console.log('Promo code validation error:', promoError.message);
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
 
     // If 100% discount, create subscription directly without Stripe checkout
     if (is100PercentDiscount && validatedPromoCode) {
-      console.log('Creating free subscription with 100% promo code');
+      console.log('🎁 Creating free subscription with 100% promo code');
       
       // Create a customer in Stripe (for future billing if needed)
       const customer = await stripe.customers.create({
@@ -102,6 +102,11 @@ Deno.serve(async (req) => {
           source: 'free_promo_code'
         }
       });
+
+      // Calculate period end
+      const periodEnd = planType === 'yearly' 
+        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
       // Create subscription record in database
       const { data: subscription, error: subscriptionError } = await supabase
@@ -113,7 +118,7 @@ Deno.serve(async (req) => {
           status: 'active',
           plan_type: planType,
           current_period_start: new Date().toISOString(),
-          current_period_end: new Date(Date.now() + (planType === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString(),
+          current_period_end: periodEnd.toISOString(),
           promo_code: promoCode,
           discount_percentage: 100,
           created_at: new Date().toISOString(),
@@ -148,7 +153,7 @@ Deno.serve(async (req) => {
           user_id: userId,
           subscription_id: subscription.id,
           amount: 0,
-          currency: currency_param || 'usd',
+          currency: 'usd',
           status: 'paid',
           paid_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
@@ -175,13 +180,14 @@ Deno.serve(async (req) => {
           created_at: new Date().toISOString()
         });
 
-      console.log('Free subscription created successfully');
+      console.log('✅ Free subscription created successfully');
 
       // Return success URL that goes directly to dashboard
       return new Response(JSON.stringify({
         url: `${Deno.env.get('VITE_APP_URL') || 'https://askstan.io'}/dashboard?free_subscription=true`,
         sessionId: 'free_' + Date.now(),
-        freeSubscription: true
+        freeSubscription: true,
+        success: true
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
@@ -237,7 +243,8 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       url: session.url,
-      sessionId: session.id
+      sessionId: session.id,
+      success: true
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200

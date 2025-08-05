@@ -1,155 +1,185 @@
-// supabase/functions/process-checkout-session/index.ts
-// Updated with better error handling and database integration
-
-import { createClient } from 'npm:@supabase/supabase-js@2'
-import Stripe from 'npm:stripe@18.4.0'
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import Stripe from 'npm:stripe@18.4.0';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://askstan.io',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-requested-with',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Credentials': 'true',
-}
+  'Access-Control-Max-Age': '86400'
+};
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { 
+      status: 204, 
+      headers: corsHeaders 
+    });
   }
 
   try {
-    // Initialize Stripe and Supabase
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
-      apiVersion: '2024-12-18.acacia',
-    })
-
+      apiVersion: '2024-12-18.acacia'
+    });
+    
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+      Deno.env.get('SUPABASE_URL') || '', 
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    );
 
-    // Get the session ID from request
-    const { sessionId } = await req.json()
+    const { sessionId } = await req.json();
+    console.log('🔄 Processing checkout session:', sessionId);
 
     if (!sessionId) {
-      throw new Error('Session ID is required')
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Session ID is required'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400
+      });
     }
 
-    console.log('🔄 Processing checkout session:', sessionId)
-
-    // Retrieve the checkout session from Stripe with expanded data
+    // Retrieve the checkout session from Stripe
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ['subscription', 'customer', 'line_items']
-    })
-
-    if (!session) {
-      throw new Error('Checkout session not found')
-    }
+    });
 
     console.log('📋 Session details:', {
       id: session.id,
       payment_status: session.payment_status,
       customer: typeof session.customer === 'string' ? session.customer : session.customer?.id,
       subscription: typeof session.subscription === 'string' ? session.subscription : session.subscription?.id,
+      amount_total: session.amount_total,
       metadata: session.metadata
-    })
+    });
 
     // Extract required data
-    const userId = session.metadata?.userId
-    const planType = session.metadata?.planType || 'monthly'
-    const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id
-    const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id
+    const userId = session.metadata?.userId;
+    const planType = session.metadata?.planType || 'monthly';
+    const promoCode = session.metadata?.promoCode || null;
+    const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
+    const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
 
     if (!userId) {
-      throw new Error('User ID not found in session metadata')
+      throw new Error('User ID not found in session metadata');
     }
 
     if (!customerId) {
-      throw new Error('Customer ID not found in session')
+      throw new Error('Customer ID not found in session');
     }
 
     // Check payment status
     if (session.payment_status !== 'paid') {
-      console.log('⚠️ Payment not completed:', session.payment_status)
+      console.log('⚠️ Payment not completed:', session.payment_status);
       return new Response(JSON.stringify({
         success: false,
         message: 'Payment not completed',
         paymentStatus: session.payment_status
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      })
+        status: 200
+      });
     }
 
     // Process subscription if present
     if (subscriptionId) {
-      console.log('💳 Processing subscription:', subscriptionId)
+      console.log('💳 Processing subscription:', subscriptionId);
 
       // Get subscription details from Stripe
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId)
-      const priceId = subscription.items.data[0]?.price.id
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const priceId = subscription.items.data[0]?.price.id;
 
-      // Use the database function to process checkout completion
-      const { data: result, error } = await supabase
-        .rpc('process_stripe_checkout_completion', {
-          session_id_param: sessionId,
-          user_id_param: userId,
-          customer_id_param: customerId,
-          subscription_id_param: subscriptionId,
-          price_id_param: priceId,
-          plan_type_param: planType,
-          amount_total_param: session.amount_total,
-          currency_param: session.currency || 'usd'
+      // Calculate period end based on plan type
+      const periodEnd = planType === 'yearly' 
+        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      // Create or update subscription in database
+      const { data: subscriptionData, error: subscriptionError } = await supabase
+        .from('user_subscriptions')
+        .upsert({
+          user_id: userId,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscriptionId,
+          stripe_price_id: priceId,
+          status: 'active',
+          plan_type: planType,
+          current_period_start: new Date().toISOString(),
+          current_period_end: periodEnd.toISOString(),
+          promo_code: promoCode,
+          discount_percentage: session.amount_total === 0 ? 100 : null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
         })
+        .select()
+        .single();
 
-      if (error) {
-        console.error('❌ Database function error:', error)
-        throw new Error(`Database processing failed: ${error.message}`)
+      if (subscriptionError) {
+        console.error('❌ Subscription creation error:', subscriptionError);
+        throw new Error(`Failed to create subscription: ${subscriptionError.message}`);
       }
 
-      if (!result?.success) {
-        console.error('❌ Checkout processing failed:', result)
-        throw new Error(result?.error || 'Unknown processing error')
-      }
+      console.log('✅ Subscription created/updated:', subscriptionData.id);
 
-      console.log('✅ Subscription processed successfully:', result)
-    } else {
-      // Handle one-time payment (no subscription)
-      console.log('💰 Processing one-time payment')
-      
-      // Still create/update user profile for one-time purchases
+      // Mark user onboarding as completed
       const { error: profileError } = await supabase
         .from('user_profiles')
-        .upsert({
-          id: userId,
+        .update({
           onboarding_completed: true,
-          updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
+        .eq('id', userId);
 
       if (profileError) {
-        console.error('⚠️ Profile update error (non-critical):', profileError)
+        console.error('⚠️ Profile update error (non-critical):', profileError);
       }
 
-      // Create billing record for one-time payment
-      if (session.amount_total) {
-        const { error: billingError } = await supabase
-          .from('billing_history')
+      // Create billing record
+      const { error: billingError } = await supabase
+        .from('billing_history')
+        .insert({
+          user_id: userId,
+          subscription_id: subscriptionData.id,
+          amount: session.amount_total || 0,
+          currency: session.currency || 'usd',
+          status: 'paid',
+          paid_at: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        });
+
+      if (billingError) {
+        console.error('⚠️ Billing record error (non-critical):', billingError);
+      }
+
+      // Record promo code usage if applicable
+      if (promoCode) {
+        const { error: promoError } = await supabase
+          .from('promo_code_usage')
           .insert({
             user_id: userId,
-            amount: session.amount_total,
-            currency: session.currency || 'usd',
-            status: 'paid',
-            paid_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-          })
+            subscription_id: subscriptionData.id,
+            promo_code: promoCode,
+            discount_type: session.amount_total === 0 ? 'percentage' : 'amount',
+            discount_value: session.amount_total === 0 ? 100 : 0,
+            discount_amount_cents: 0,
+            currency: 'usd',
+            metadata: {
+              session_id: sessionId,
+              free_subscription: session.amount_total === 0
+            },
+            applied_at: new Date().toISOString(),
+            created_at: new Date().toISOString()
+          });
 
-        if (billingError) {
-          console.error('⚠️ Billing record error (non-critical):', billingError)
+        if (promoError) {
+          console.error('⚠️ Promo code usage error (non-critical):', promoError);
         }
       }
-    }
 
-    console.log('🎉 Checkout session processing completed successfully')
+      console.log('🎉 Checkout session processing completed successfully');
+    }
 
     return new Response(JSON.stringify({
       success: true,
@@ -157,14 +187,15 @@ Deno.serve(async (req) => {
       sessionId: sessionId,
       subscriptionId: subscriptionId,
       customerId: customerId,
-      userId: userId
+      userId: userId,
+      subscriptionStatus: 'active'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+      status: 200
+    });
 
-  } catch (error) {
-    console.error('💥 Error processing checkout session:', error)
+  } catch (error: any) {
+    console.error('💥 Error processing checkout session:', error);
     
     return new Response(JSON.stringify({
       success: false,
@@ -172,7 +203,7 @@ Deno.serve(async (req) => {
       details: error.stack || 'No stack trace available'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    })
+      status: 400
+    });
   }
-})
+});

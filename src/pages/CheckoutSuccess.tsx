@@ -34,35 +34,26 @@ const CheckoutSuccess: React.FC = () => {
         console.log('Processing checkout completion for session:', sessionId);
         setIsFreeSubscription(freeSubscription);
 
-        // Get user session for authorization
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session?.access_token) {
-          throw new Error('No valid session found');
-        }
-
         // Call the process-checkout-session edge function
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-checkout-session`, {
+        const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-checkout-session`;
+        
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ 
-            sessionId,
-            userId: user.id 
-          }),
+          body: JSON.stringify({ sessionId }),
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}: Failed to process checkout`);
+          throw new Error(`HTTP ${response.status}: Failed to process checkout`);
         }
 
         const result = await response.json();
         
         if (result.success) {
-          console.log('Checkout processed successfully:', result);
+          console.log('✅ Checkout processed successfully:', result);
           setSuccess(true);
           
           // Refresh user data to get the new subscription
@@ -74,7 +65,7 @@ const CheckoutSuccess: React.FC = () => {
           // Redirect to dashboard after showing success message
           setTimeout(() => {
             navigate('/dashboard', { replace: true });
-          }, 3000);
+          }, 2000);
         } else {
           throw new Error(result.error || 'Checkout processing failed');
         }
