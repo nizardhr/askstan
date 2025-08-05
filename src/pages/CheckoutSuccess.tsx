@@ -18,66 +18,101 @@ const CheckoutSuccess: React.FC = () => {
       const sessionId = searchParams.get('session_id');
       const freeSubscription = searchParams.get('free_subscription') === 'true';
       
+      console.log('🔄 Processing checkout with session ID:', sessionId);
+      console.log('👤 Current user:', user?.id);
+      
       if (!user) {
+        console.error('❌ No user found during checkout processing');
         setError('User not found - please sign in again');
         setProcessing(false);
         return;
       }
 
       if (!sessionId) {
-        setError('Invalid checkout session');
+        console.error('❌ No session ID found in URL');
+        setError('Invalid checkout session - no session ID found');
         setProcessing(false);
         return;
       }
 
       try {
-        console.log('Processing checkout completion for session:', sessionId);
         setIsFreeSubscription(freeSubscription);
+        console.log('🚀 Calling process-checkout-session edge function...');
+
+        // Get current session for authorization
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session?.access_token) {
+          throw new Error('Authentication session not found');
+        }
 
         // Call the process-checkout-session edge function
         const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-checkout-session`;
         
+        console.log('📡 Making request to:', apiUrl);
+        console.log('📋 Request payload:', { sessionId, userId: user.id });
+
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'x-requested-with': 'XMLHttpRequest',
           },
-          body: JSON.stringify({ sessionId }),
+          body: JSON.stringify({ 
+            sessionId,
+            userId: user.id 
+          }),
         });
 
+        console.log('📡 Response status:', response.status);
+        console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: Failed to process checkout`);
+          const errorText = await response.text();
+          console.error('❌ Edge function error response:', errorText);
+          throw new Error(`Edge function failed (${response.status}): ${errorText}`);
         }
 
         const result = await response.json();
+        console.log('✅ Edge function result:', result);
         
         if (result.success) {
-          console.log('✅ Checkout processed successfully:', result);
+          console.log('🎉 Checkout processed successfully!');
           setSuccess(true);
           
-          // Refresh user data to get the new subscription
-          await refetchUserData();
-          
-          // Clean up URL parameters
+          // Clean up URL parameters immediately
           window.history.replaceState({}, '', '/checkout-success');
+          
+          // Refresh user data to get the new subscription
+          console.log('🔄 Refreshing user data...');
+          await refetchUserData();
           
           // Redirect to dashboard after showing success message
           setTimeout(() => {
+            console.log('🏠 Redirecting to dashboard...');
             navigate('/dashboard', { replace: true });
-          }, 2000);
+          }, 3000);
         } else {
           throw new Error(result.error || 'Checkout processing failed');
         }
       } catch (err: any) {
-        console.error('Checkout processing error:', err);
+        console.error('💥 Checkout processing error:', err);
         setError(err.message || 'Failed to process checkout');
       } finally {
         setProcessing(false);
       }
     };
 
-    processCheckout();
+    // Only process if we have both user and sessionId
+    if (user && searchParams.get('session_id')) {
+      processCheckout();
+    } else if (!user) {
+      console.log('⏳ Waiting for user authentication...');
+    } else {
+      console.log('⏳ Waiting for session ID...');
+      setProcessing(false);
+    }
   }, [searchParams, user, navigate, refetchUserData]);
 
   if (processing) {
