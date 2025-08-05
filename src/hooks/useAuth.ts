@@ -12,40 +12,18 @@ export const useAuth = () => {
     try {
       console.log('📊 [useAuth] Fetching data for user:', userId);
 
-      // Fetch profile - create if doesn't exist
+      // Fetch profile
       let { data: profileData, error: profileError } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
-        .maybeSingle();
+        .single();
 
       if (profileError) {
         console.error('❌ [useAuth] Profile fetch error:', profileError);
+        // Profile should exist due to trigger, but handle gracefully
+        console.log('⚠️ [useAuth] Profile not found, user may need to refresh');
         setProfile(null);
-      } else if (!profileData) {
-        console.log('➕ [useAuth] Creating missing profile...');
-        // Create profile if it doesn't exist
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser) {
-          const { data: newProfile, error: createError } = await supabase
-            .from('user_profiles')
-            .insert({
-              id: userId,
-              email: authUser.email || `user-${userId}@temp.local`,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            .select()
-            .single();
-
-          if (createError) {
-            console.error('❌ [useAuth] Profile creation error:', createError);
-            setProfile(null);
-          } else {
-            console.log('✅ [useAuth] Profile created:', newProfile.email);
-            setProfile(newProfile);
-          }
-        }
       } else {
         console.log('✅ [useAuth] Profile loaded:', profileData.email);
         setProfile(profileData);
@@ -56,17 +34,14 @@ export const useAuth = () => {
         .from('user_subscriptions')
         .select('*')
         .eq('user_id', userId)
-        .maybeSingle();
+        .single();
 
       if (subscriptionError) {
-        console.error('❌ [useAuth] Subscription fetch error:', subscriptionError);
+        console.log('ℹ️ [useAuth] No subscription found (expected for new users)');
         setSubscription(null);
       } else if (subscriptionData) {
         console.log('✅ [useAuth] Subscription loaded:', subscriptionData.status);
         setSubscription(subscriptionData);
-      } else {
-        console.log('ℹ️ [useAuth] No subscription found');
-        setSubscription(null);
       }
 
     } catch (error) {

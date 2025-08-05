@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, Loader, AlertTriangle, Gift, ArrowRight } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
 
 const CheckoutSuccess: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -170,7 +171,7 @@ const CheckoutSuccess: React.FC = () => {
           </h1>
           
           <p className="text-gray-600 mb-6">
-            There was an issue processing your subscription. {!isFreeSubscription && "Don't worry - your payment was successful and will be processed."}
+            There was an issue processing your subscription. Don't worry - your payment was successful and will be processed.
           </p>
 
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
