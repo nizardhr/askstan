@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle, Loader, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Loader, AlertTriangle, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
@@ -11,31 +11,53 @@ const CheckoutSuccess: React.FC = () => {
   const [processing, setProcessing] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [isFreeSubscription, setIsFreeSubscription] = useState(false);
 
   useEffect(() => {
     const processCheckout = async () => {
       const sessionId = searchParams.get('session_id');
+      const freeSubscription = searchParams.get('free_subscription') === 'true';
       
-      if (!sessionId || !user) {
-        setError('Invalid checkout session or user not found');
+      if (!user) {
+        setError('User not found - please sign in again');
+        setProcessing(false);
+        return;
+      }
+
+      if (!sessionId) {
+        setError('Invalid checkout session');
         setProcessing(false);
         return;
       }
 
       try {
         console.log('Processing checkout completion for session:', sessionId);
+        setIsFreeSubscription(freeSubscription);
 
-        // Call the process-checkout-session edge function
+        // Get user session for authorization
         const { data: { session } } = await supabase.auth.getSession();
         
+        if (!session?.access_token) {
+          throw new Error('No valid session found');
+        }
+
+        // Call the process-checkout-session edge function
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-checkout-session`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
+            'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ sessionId }),
+          body: JSON.stringify({ 
+            sessionId,
+            userId: user.id 
+          }),
         });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}: Failed to process checkout`);
+        }
 
         const result = await response.json();
         
@@ -46,10 +68,13 @@ const CheckoutSuccess: React.FC = () => {
           // Refresh user data to get the new subscription
           await refetchUserData();
           
-          // Redirect to dashboard after a short delay
+          // Clean up URL parameters
+          window.history.replaceState({}, '', '/checkout-success');
+          
+          // Redirect to dashboard after showing success message
           setTimeout(() => {
             navigate('/dashboard', { replace: true });
-          }, 2000);
+          }, 3000);
         } else {
           throw new Error(result.error || 'Checkout processing failed');
         }
@@ -73,15 +98,18 @@ const CheckoutSuccess: React.FC = () => {
           </div>
           
           <h1 className="text-2xl font-bold text-gray-900 mb-4">
-            Processing Your Subscription
+            {isFreeSubscription ? 'Activating Your Free Account' : 'Processing Your Subscription'}
           </h1>
           
           <p className="text-gray-600 mb-6">
-            We're setting up your AskStan account and activating your subscription. This will only take a moment.
+            {isFreeSubscription 
+              ? "We're activating your free AskStan account with the promo code. This will only take a moment."
+              : "We're setting up your AskStan account and activating your subscription. This will only take a moment."
+            }
           </p>
 
           <div className="space-y-2 text-sm text-gray-500">
-            <p>✅ Payment confirmed</p>
+            <p>✅ {isFreeSubscription ? 'Promo code applied' : 'Payment confirmed'}</p>
             <p>🔄 Activating subscription...</p>
             <p>📱 Setting up your account</p>
           </div>
@@ -103,7 +131,7 @@ const CheckoutSuccess: React.FC = () => {
           </h1>
           
           <p className="text-gray-600 mb-6">
-            There was an issue processing your subscription. Don't worry - your payment was successful.
+            There was an issue processing your subscription. {!isFreeSubscription && "Don't worry - your payment was successful."}
           </p>
 
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
@@ -134,20 +162,36 @@ const CheckoutSuccess: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-amber-50 flex items-center justify-center px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <CheckCircle className="w-8 h-8 text-green-600" />
+          {isFreeSubscription ? (
+            <Gift className="w-8 h-8 text-green-600" />
+          ) : (
+            <CheckCircle className="w-8 h-8 text-green-600" />
+          )}
         </div>
         
         <h1 className="text-2xl font-bold text-gray-900 mb-4">
-          Welcome to AskStan!
+          {isFreeSubscription ? 'Free Account Activated!' : 'Welcome to AskStan!'}
         </h1>
         
         <p className="text-gray-600 mb-6">
-          Your subscription has been activated successfully. You now have full access to Stan, your personal AI social media growth coach.
+          {isFreeSubscription 
+            ? "Your free AskStan account has been activated with the promo code. You now have full access to Stan, your personal AI social media growth coach."
+            : "Your subscription has been activated successfully. You now have full access to Stan, your personal AI social media growth coach."
+          }
         </p>
 
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-          <p className="text-sm text-green-800 font-medium">
-            🎉 Subscription Active - Ready to grow your social media presence!
+        <div className={`border rounded-lg p-4 mb-6 ${
+          isFreeSubscription 
+            ? 'bg-amber-50 border-amber-200' 
+            : 'bg-green-50 border-green-200'
+        }`}>
+          <p className={`text-sm font-medium ${
+            isFreeSubscription ? 'text-amber-800' : 'text-green-800'
+          }`}>
+            {isFreeSubscription 
+              ? '🎉 Free subscription activated with promo code!'
+              : '🎉 Subscription Active - Ready to grow your social media presence!'
+            }
           </p>
         </div>
 
