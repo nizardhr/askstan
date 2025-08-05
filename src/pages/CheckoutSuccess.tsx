@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, Loader, AlertCircle, ArrowRight, CreditCard } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
 
 const CheckoutSuccess: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -17,11 +18,17 @@ const CheckoutSuccess: React.FC = () => {
 
   useEffect(() => {
     const processCheckout = async () => {
+      console.log('🔄 [CheckoutSuccess] Starting checkout processing...');
+      console.log('📋 [CheckoutSuccess] Session ID:', sessionId);
+      console.log('👤 [CheckoutSuccess] User:', user?.id);
+      console.log('🆓 [CheckoutSuccess] Free subscription:', freeSubscription);
+
       if (!user) {
         console.log('⏳ [CheckoutSuccess] Waiting for user authentication...');
         return;
       }
 
+      // Handle free subscription (100% promo code)
       if (freeSubscription) {
         console.log('🎉 [CheckoutSuccess] Free subscription detected, redirecting to dashboard');
         setSuccess(true);
@@ -52,6 +59,14 @@ const CheckoutSuccess: React.FC = () => {
         // Call the process-checkout-session edge function
         const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-checkout-session`;
         
+        const requestBody = {
+          sessionId: sessionId,
+          userId: user.id
+        };
+
+        console.log('📤 [CheckoutSuccess] Request body:', requestBody);
+        console.log('🌐 [CheckoutSuccess] API URL:', apiUrl);
+
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
@@ -59,17 +74,15 @@ const CheckoutSuccess: React.FC = () => {
             'Content-Type': 'application/json',
             'x-requested-with': 'XMLHttpRequest',
           },
-          body: JSON.stringify({
-            sessionId: sessionId,
-            userId: user.id
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         console.log('📡 [CheckoutSuccess] Edge function response status:', response.status);
+        console.log('📡 [CheckoutSuccess] Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('❌ [CheckoutSuccess] Edge function error:', errorText);
+          console.error('❌ [CheckoutSuccess] Edge function error response:', errorText);
           throw new Error(`Failed to process checkout: ${response.status} ${response.statusText}`);
         }
 
@@ -101,7 +114,10 @@ const CheckoutSuccess: React.FC = () => {
       }
     };
 
-    processCheckout();
+    // Only process if we have user and sessionId (or free subscription)
+    if (user && (sessionId || freeSubscription)) {
+      processCheckout();
+    }
   }, [user, sessionId, freeSubscription, navigate, refetchUserData]);
 
   if (processing) {
