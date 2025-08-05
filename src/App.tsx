@@ -6,6 +6,7 @@ import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import PlanSelection from './pages/PlanSelection';
 import PaymentRequired from './pages/PaymentRequired';
+import CheckoutSuccess from './pages/CheckoutSuccess';
 import Settings from './pages/Settings';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -17,6 +18,14 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route 
+            path="/checkout-success" 
+            element={
+              <ProtectedRoute>
+                <CheckoutSuccess />
+              </ProtectedRoute>
+            } 
+          />
           <Route 
             path="/subscribe" 
             element={

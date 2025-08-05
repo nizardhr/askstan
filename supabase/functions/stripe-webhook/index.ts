@@ -31,12 +31,12 @@ Deno.serve(async (req) => {
     }
 
     const event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-
     console.log('Received webhook event:', event.type)
 
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
+        console.log('Processing checkout session:', session.id)
         
         if (session.customer && session.subscription && session.metadata?.userId) {
           const userId = session.metadata.userId
@@ -45,6 +45,7 @@ Deno.serve(async (req) => {
 
           // Get subscription details from Stripe
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
+          const priceId = subscription.items.data[0]?.price.id
 
           // Extract discount information if promo code was used
           let discountAmount = null
@@ -60,20 +61,18 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Create or update subscription with promo code data
-          const { error } = await supabase
+          // Create or update subscription
+          const { error: subscriptionError } = await supabase
             .from('user_subscriptions')
             .upsert({
               user_id: userId,
               stripe_customer_id: session.customer as string,
               stripe_subscription_id: session.subscription as string,
-              stripe_price_id: subscription.items.data[0]?.price.id,
+              stripe_price_id: priceId,
               status: 'active',
               plan_type: planType,
               current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
               current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-              trial_start: subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null,
-              trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
               promo_code: promoCode,
               discount_amount: discountAmount,
               discount_percentage: discountPercentage,
@@ -82,11 +81,32 @@ Deno.serve(async (req) => {
               onConflict: 'user_id'
             })
 
-          if (error) {
-            console.error('Error creating subscription:', error)
+          if (subscriptionError) {
+            console.error('Error creating subscription:', subscriptionError)
           } else {
-            console.log('Subscription created for user:', userId, 'with promo code:', promoCode)
+            console.log('Subscription created successfully for user:', userId)
+            
+            // Mark user onboarding as completed
+            await supabase
+              .from('user_profiles')
+              .update({ 
+                onboarding_completed: true,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', userId)
           }
+
+          // Record billing event
+          await supabase
+            .from('billing_history')
+            .insert({
+              user_id: userId,
+              amount: session.amount_total || 0,
+              currency: session.currency || 'usd',
+              status: 'paid',
+              paid_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            })
         }
         break
       }
@@ -96,7 +116,7 @@ Deno.serve(async (req) => {
         
         if (invoice.subscription && invoice.customer) {
           // Update subscription status
-          const { error: subscriptionError } = await supabase
+          await supabase
             .from('user_subscriptions')
             .update({
               status: 'active',
@@ -104,25 +124,6 @@ Deno.serve(async (req) => {
             })
             .eq('stripe_subscription_id', invoice.subscription as string)
 
-          // Record billing event
-          const { error: billingError } = await supabase
-            .rpc('record_billing_event', {
-              stripe_customer_id_param: invoice.customer as string,
-              stripe_invoice_id_param: invoice.id,
-              amount_param: invoice.amount_paid,
-              currency_param: invoice.currency,
-              status_param: 'paid',
-              invoice_url_param: invoice.hosted_invoice_url,
-              paid_at_param: new Date().toISOString()
-            })
-
-          if (subscriptionError) {
-            console.error('Error updating subscription on payment:', subscriptionError)
-          }
-          if (billingError) {
-            console.error('Error recording billing event:', billingError)
-          }
-          
           console.log('Invoice paid for subscription:', invoice.subscription)
         }
         break
@@ -131,9 +132,8 @@ Deno.serve(async (req) => {
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice
         
-        if (invoice.subscription && invoice.customer) {
-          // Update subscription status
-          const { error: subscriptionError } = await supabase
+        if (invoice.subscription) {
+          await supabase
             .from('user_subscriptions')
             .update({
               status: 'past_due',
@@ -141,25 +141,6 @@ Deno.serve(async (req) => {
             })
             .eq('stripe_subscription_id', invoice.subscription as string)
 
-          // Record billing event
-          const { error: billingError } = await supabase
-            .rpc('record_billing_event', {
-              stripe_customer_id_param: invoice.customer as string,
-              stripe_invoice_id_param: invoice.id,
-              amount_param: invoice.amount_due,
-              currency_param: invoice.currency,
-              status_param: 'failed',
-              invoice_url_param: invoice.hosted_invoice_url,
-              paid_at_param: null
-            })
-
-          if (subscriptionError) {
-            console.error('Error updating subscription on payment failure:', subscriptionError)
-          }
-          if (billingError) {
-            console.error('Error recording billing failure:', billingError)
-          }
-          
           console.log('Payment failed for subscription:', invoice.subscription)
         }
         break
@@ -172,49 +153,27 @@ Deno.serve(async (req) => {
                       subscription.status === 'trialing' ? 'trialing' :
                       subscription.status === 'past_due' ? 'past_due' :
                       subscription.status === 'canceled' ? 'canceled' :
-                      subscription.status === 'unpaid' ? 'unpaid' :
-                      subscription.status === 'incomplete' ? 'incomplete' :
-                      subscription.status === 'incomplete_expired' ? 'incomplete_expired' : 'inactive'
+                      subscription.status === 'unpaid' ? 'unpaid' : 'inactive'
 
-        // Extract discount information if present
-        let discountAmount = null
-        let discountPercentage = null
-
-        if (subscription.discount) {
-          const coupon = subscription.discount.coupon
-          if (coupon.amount_off) {
-            discountAmount = coupon.amount_off
-          }
-          if (coupon.percent_off) {
-            discountPercentage = coupon.percent_off
-          }
-        }
-
-        const { error } = await supabase
+        await supabase
           .from('user_subscriptions')
           .update({
             status: status,
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             cancel_at_period_end: subscription.cancel_at_period_end,
-            discount_amount: discountAmount,
-            discount_percentage: discountPercentage,
             updated_at: new Date().toISOString(),
           })
           .eq('stripe_subscription_id', subscription.id)
 
-        if (error) {
-          console.error('Error updating subscription:', error)
-        } else {
-          console.log('Subscription updated:', subscription.id, 'Status:', status)
-        }
+        console.log('Subscription updated:', subscription.id, 'Status:', status)
         break
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
         
-        const { error } = await supabase
+        await supabase
           .from('user_subscriptions')
           .update({
             status: 'canceled',
@@ -223,32 +182,7 @@ Deno.serve(async (req) => {
           })
           .eq('stripe_subscription_id', subscription.id)
 
-        if (error) {
-          console.error('Error canceling subscription:', error)
-        } else {
-          console.log('Subscription canceled:', subscription.id)
-        }
-        break
-      }
-
-      case 'invoice.payment_action_required': {
-        const invoice = event.data.object as Stripe.Invoice
-        
-        if (invoice.subscription) {
-          const { error } = await supabase
-            .from('user_subscriptions')
-            .update({
-              status: 'incomplete',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('stripe_subscription_id', invoice.subscription as string)
-
-          if (error) {
-            console.error('Error updating subscription for payment action required:', error)
-          } else {
-            console.log('Subscription requires payment action:', invoice.subscription)
-          }
-        }
+        console.log('Subscription canceled:', subscription.id)
         break
       }
 
@@ -260,7 +194,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Webhook error:', err)
     return new Response(
       JSON.stringify({ error: err.message }),
