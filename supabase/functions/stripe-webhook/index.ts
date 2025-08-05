@@ -38,75 +38,63 @@ Deno.serve(async (req) => {
         const session = event.data.object as Stripe.Checkout.Session
         console.log('Processing checkout session:', session.id)
         
-        if (session.customer && session.subscription && session.metadata?.userId) {
-          const userId = session.metadata.userId
-          const planType = session.metadata.planType || 'monthly'
-          const promoCode = session.metadata.promoCode || null
+        const userId = session.metadata?.userId
+        const planType = session.metadata?.planType || 'monthly'
+        const promoCode = session.metadata?.promoCode || null
 
-          // Get subscription details from Stripe
+        if (!userId) {
+          console.error('No userId in session metadata')
+          break
+        }
+
+        // Handle subscription checkout
+        if (session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
           const priceId = subscription.items.data[0]?.price.id
 
-          // Extract discount information if promo code was used
-          let discountAmount = null
-          let discountPercentage = null
-
-          if (subscription.discount) {
-            const coupon = subscription.discount.coupon
-            if (coupon.amount_off) {
-              discountAmount = coupon.amount_off
-            }
-            if (coupon.percent_off) {
-              discountPercentage = coupon.percent_off
-            }
-          }
-
-          // Create or update subscription
-          const { error: subscriptionError } = await supabase
-            .from('user_subscriptions')
-            .upsert({
-              user_id: userId,
-              stripe_customer_id: session.customer as string,
-              stripe_subscription_id: session.subscription as string,
-              stripe_price_id: priceId,
-              status: 'active',
-              plan_type: planType,
-              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-              promo_code: promoCode,
-              discount_amount: discountAmount,
-              discount_percentage: discountPercentage,
-              updated_at: new Date().toISOString(),
-            }, {
-              onConflict: 'user_id'
+          // Call our database function to process the checkout
+          const { data: result, error } = await supabase
+            .rpc('process_checkout_completion', {
+              session_id_param: session.id,
+              user_id_param: userId,
+              customer_id_param: session.customer as string,
+              subscription_id_param: subscription.id,
+              price_id_param: priceId,
+              plan_type_param: planType,
+              amount_total_param: session.amount_total || 0,
+              promo_code_param: promoCode
             })
 
-          if (subscriptionError) {
-            console.error('Error creating subscription:', subscriptionError)
+          if (error) {
+            console.error('Database function error:', error)
           } else {
-            console.log('Subscription created successfully for user:', userId)
-            
-            // Mark user onboarding as completed
-            await supabase
-              .from('user_profiles')
-              .update({ 
-                onboarding_completed: true,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', userId)
+            console.log('Subscription processed successfully:', result)
           }
-
-          // Record billing event
+        } 
+        // Handle one-time payment (no subscription)
+        else {
+          // Still activate user account for one-time payments
           await supabase
-            .from('billing_history')
-            .insert({
-              user_id: userId,
-              amount: session.amount_total || 0,
-              currency: session.currency || 'usd',
-              status: 'paid',
-              paid_at: new Date().toISOString(),
-              created_at: new Date().toISOString(),
+            .from('user_profiles')
+            .update({ 
+              onboarding_completed: true,
+              updated_at: new Date().toISOString()
             })
+            .eq('id', userId)
+
+          // Create billing record
+          if (session.amount_total) {
+            await supabase
+              .from('billing_history')
+              .insert({
+                user_id: userId,
+                amount: session.amount_total,
+                currency: session.currency || 'usd',
+                status: 'paid',
+                paid_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              })
+          }
         }
         break
       }
@@ -115,7 +103,6 @@ Deno.serve(async (req) => {
         const invoice = event.data.object as Stripe.Invoice
         
         if (invoice.subscription && invoice.customer) {
-          // Update subscription status
           await supabase
             .from('user_subscriptions')
             .update({

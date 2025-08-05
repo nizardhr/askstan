@@ -193,7 +193,7 @@ const PlanSelection: React.FC = () => {
         console.log('Including promo code in checkout:', appliedPromo.code);
       }
 
-      console.log('Creating checkout session with:', requestBody);
+      console.log('Creating checkout session with promo code:', appliedPromo?.code, 'Discount:', appliedPromo?.discount);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
