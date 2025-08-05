@@ -9,7 +9,11 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  console.log('🚀 [create-checkout-session] Function invoked');
+  console.log('📋 [create-checkout-session] Request method:', req.method);
+
   if (req.method === 'OPTIONS') {
+    console.log('✅ [create-checkout-session] Handling CORS preflight');
     return new Response(null, { 
       status: 204, 
       headers: corsHeaders 
@@ -17,6 +21,8 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log('🔧 [create-checkout-session] Initializing Stripe and Supabase...');
+    
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
       apiVersion: '2024-12-18.acacia'
     });
@@ -26,11 +32,13 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     );
 
+    console.log('📥 [create-checkout-session] Parsing request body...');
     const { priceId, userId, planType, promoCode, promotionCodeId } = await req.json();
     
-    console.log('Creating checkout session for:', { userId, planType, priceId, promoCode });
+    console.log('📋 [create-checkout-session] Request data:', { userId, planType, priceId, promoCode, promotionCodeId });
 
     if (!priceId || !userId || !planType) {
+      console.error('❌ [create-checkout-session] Missing required parameters');
       return new Response(JSON.stringify({
         error: 'Missing required parameters: priceId, userId, or planType'
       }), {
@@ -39,6 +47,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    console.log('👤 [create-checkout-session] Getting user profile...');
     // Get user profile - create if doesn't exist
     let { data: profile, error: profileError } = await supabase
       .from('user_profiles')
@@ -46,8 +55,18 @@ Deno.serve(async (req) => {
       .eq('id', userId)
       .maybeSingle();
 
-    if (profileError || !profile) {
-      console.log('Creating missing profile for user:', userId);
+    if (profileError) {
+      console.error('❌ [create-checkout-session] Profile fetch error:', profileError);
+      return new Response(JSON.stringify({
+        error: 'Failed to fetch user profile'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500
+      });
+    }
+
+    if (!profile) {
+      console.log('➕ [create-checkout-session] Creating missing profile for user:', userId);
       
       const { data: newProfile, error: createError } = await supabase
         .from('user_profiles')
@@ -61,7 +80,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (createError) {
-        console.error('Failed to create profile:', createError);
+        console.error('❌ [create-checkout-session] Failed to create profile:', createError);
         return new Response(JSON.stringify({
           error: 'Failed to create user profile'
         }), {
@@ -71,6 +90,9 @@ Deno.serve(async (req) => {
       }
       
       profile = newProfile;
+      console.log('✅ [create-checkout-session] Profile created:', profile.email);
+    } else {
+      console.log('✅ [create-checkout-session] Profile found:', profile.email);
     }
 
     // Check if promo code gives 100% discount
@@ -78,23 +100,32 @@ Deno.serve(async (req) => {
     let validatedPromoCode = null;
 
     if (promoCode && promotionCodeId) {
+      console.log('🏷️ [create-checkout-session] Validating promo code:', promoCode);
       try {
         const promotionCode = await stripe.promotionCodes.retrieve(promotionCodeId);
+        console.log('🏷️ [create-checkout-session] Promo code details:', {
+          id: promotionCode.id,
+          code: promotionCode.code,
+          active: promotionCode.active,
+          percent_off: promotionCode.coupon.percent_off
+        });
+        
         if (promotionCode.active && promotionCode.coupon.percent_off === 100) {
           is100PercentDiscount = true;
           validatedPromoCode = promotionCode;
-          console.log('💯 100% discount detected - creating free subscription');
+          console.log('💯 [create-checkout-session] 100% discount detected - creating free subscription');
         }
       } catch (promoError) {
-        console.log('Promo code validation error:', promoError.message);
+        console.log('⚠️ [create-checkout-session] Promo code validation error:', promoError.message);
       }
     }
 
     // If 100% discount, create subscription directly without Stripe checkout
     if (is100PercentDiscount && validatedPromoCode) {
-      console.log('🎁 Creating free subscription with 100% promo code');
+      console.log('🎁 [create-checkout-session] Creating free subscription with 100% promo code');
       
       // Create a customer in Stripe (for future billing if needed)
+      console.log('👤 [create-checkout-session] Creating Stripe customer...');
       const customer = await stripe.customers.create({
         email: profile.email,
         metadata: {
@@ -103,15 +134,18 @@ Deno.serve(async (req) => {
         }
       });
 
+      console.log('✅ [create-checkout-session] Stripe customer created:', customer.id);
+
       // Calculate period end
       const periodEnd = planType === 'yearly' 
         ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
         : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
+      console.log('💾 [create-checkout-session] Creating subscription in database...');
       // Create subscription record in database
       const { data: subscription, error: subscriptionError } = await supabase
         .from('user_subscriptions')
-        .insert({
+        .upsert({
           user_id: userId,
           stripe_customer_id: customer.id,
           stripe_price_id: priceId,
@@ -123,12 +157,14 @@ Deno.serve(async (req) => {
           discount_percentage: 100,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
         })
         .select()
         .single();
 
       if (subscriptionError) {
-        console.error('Failed to create subscription:', subscriptionError);
+        console.error('❌ [create-checkout-session] Failed to create subscription:', subscriptionError);
         return new Response(JSON.stringify({
           error: 'Failed to create subscription'
         }), {
@@ -137,6 +173,9 @@ Deno.serve(async (req) => {
         });
       }
 
+      console.log('✅ [create-checkout-session] Subscription created:', subscription.id);
+
+      console.log('👤 [create-checkout-session] Marking onboarding as completed...');
       // Mark user onboarding as completed
       await supabase
         .from('user_profiles')
@@ -146,6 +185,7 @@ Deno.serve(async (req) => {
         })
         .eq('id', userId);
 
+      console.log('💰 [create-checkout-session] Creating billing record...');
       // Create billing record for $0 payment
       await supabase
         .from('billing_history')
@@ -159,6 +199,7 @@ Deno.serve(async (req) => {
           created_at: new Date().toISOString(),
         });
 
+      console.log('🏷️ [create-checkout-session] Recording promo code usage...');
       // Record promo code usage
       await supabase
         .from('promo_code_usage')
@@ -180,7 +221,7 @@ Deno.serve(async (req) => {
           created_at: new Date().toISOString()
         });
 
-      console.log('✅ Free subscription created successfully');
+      console.log('🎉 [create-checkout-session] Free subscription created successfully');
 
       // Return success URL that goes directly to dashboard
       return new Response(JSON.stringify({
@@ -194,6 +235,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    console.log('💳 [create-checkout-session] Creating regular Stripe checkout session...');
     // Regular paid checkout flow
     const sessionConfig: any = {
       customer_email: profile.email,
@@ -221,6 +263,7 @@ Deno.serve(async (req) => {
 
     // Apply promo code if provided
     if (promoCode && promotionCodeId) {
+      console.log('🏷️ [create-checkout-session] Applying promo code to checkout session...');
       try {
         const promotionCode = await stripe.promotionCodes.retrieve(promotionCodeId);
         if (promotionCode.active && promotionCode.code.toUpperCase() === promoCode.toUpperCase()) {
@@ -229,21 +272,21 @@ Deno.serve(async (req) => {
           }];
           sessionConfig.metadata.promoCode = promoCode;
           sessionConfig.subscription_data.metadata.promoCode = promoCode;
-          console.log('Applied promo code:', promoCode);
+          console.log('✅ [create-checkout-session] Applied promo code:', promoCode);
         }
       } catch (promoError) {
-        console.log('Promo code error (proceeding without discount):', promoError.message);
+        console.log('⚠️ [create-checkout-session] Promo code error (proceeding without discount):', promoError.message);
       }
     }
 
     // Create checkout session
-    const session = await stripe.checkout.sessions.create(sessionConfig);
+    const checkoutSession = await stripe.checkout.sessions.create(sessionConfig);
     
-    console.log('Checkout session created:', session.id);
+    console.log('✅ [create-checkout-session] Checkout session created:', checkoutSession.id);
 
     return new Response(JSON.stringify({
-      url: session.url,
-      sessionId: session.id,
+      url: checkoutSession.url,
+      sessionId: checkoutSession.id,
       success: true
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -251,7 +294,9 @@ Deno.serve(async (req) => {
     });
 
   } catch (err: any) {
-    console.error('Checkout session creation error:', err);
+    console.error('💥 [create-checkout-session] Critical error:', err);
+    console.error('💥 [create-checkout-session] Error stack:', err.stack);
+    
     return new Response(JSON.stringify({
       error: 'Failed to create checkout session',
       details: err.message

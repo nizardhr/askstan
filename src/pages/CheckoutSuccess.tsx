@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle, Loader, AlertTriangle, Gift } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { CheckCircle, Loader, AlertTriangle, Gift, ArrowRight } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 const CheckoutSuccess: React.FC = () => {
@@ -12,24 +11,27 @@ const CheckoutSuccess: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isFreeSubscription, setIsFreeSubscription] = useState(false);
+  const [processingStep, setProcessingStep] = useState('Validating checkout session...');
 
   useEffect(() => {
     const processCheckout = async () => {
       const sessionId = searchParams.get('session_id');
       const freeSubscription = searchParams.get('free_subscription') === 'true';
       
-      console.log('🔄 Processing checkout with session ID:', sessionId);
-      console.log('👤 Current user:', user?.id);
+      console.log('🔄 [CheckoutSuccess] Starting checkout processing');
+      console.log('📋 [CheckoutSuccess] Session ID:', sessionId);
+      console.log('👤 [CheckoutSuccess] User ID:', user?.id);
+      console.log('🎁 [CheckoutSuccess] Free subscription:', freeSubscription);
       
       if (!user) {
-        console.error('❌ No user found during checkout processing');
+        console.error('❌ [CheckoutSuccess] No user found');
         setError('User not found - please sign in again');
         setProcessing(false);
         return;
       }
 
       if (!sessionId) {
-        console.error('❌ No session ID found in URL');
+        console.error('❌ [CheckoutSuccess] No session ID found');
         setError('Invalid checkout session - no session ID found');
         setProcessing(false);
         return;
@@ -37,7 +39,9 @@ const CheckoutSuccess: React.FC = () => {
 
       try {
         setIsFreeSubscription(freeSubscription);
-        console.log('🚀 Calling process-checkout-session edge function...');
+        setProcessingStep('Activating your subscription...');
+        
+        console.log('🚀 [CheckoutSuccess] Calling process-checkout-session edge function...');
 
         // Get current session for authorization
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -49,8 +53,8 @@ const CheckoutSuccess: React.FC = () => {
         // Call the process-checkout-session edge function
         const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-checkout-session`;
         
-        console.log('📡 Making request to:', apiUrl);
-        console.log('📋 Request payload:', { sessionId, userId: user.id });
+        console.log('📡 [CheckoutSuccess] Making request to:', apiUrl);
+        console.log('📋 [CheckoutSuccess] Request payload:', { sessionId, userId: user.id });
 
         const response = await fetch(apiUrl, {
           method: 'POST',
@@ -65,41 +69,42 @@ const CheckoutSuccess: React.FC = () => {
           }),
         });
 
-        console.log('📡 Response status:', response.status);
-        console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
-
+        console.log('📡 [CheckoutSuccess] Response status:', response.status);
+        
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('❌ Edge function error response:', errorText);
-          throw new Error(`Edge function failed (${response.status}): ${errorText}`);
+          console.error('❌ [CheckoutSuccess] Edge function error:', errorText);
+          throw new Error(`Failed to process checkout (${response.status}): ${errorText}`);
         }
 
         const result = await response.json();
-        console.log('✅ Edge function result:', result);
+        console.log('✅ [CheckoutSuccess] Edge function result:', result);
         
         if (result.success) {
-          console.log('🎉 Checkout processed successfully!');
+          console.log('🎉 [CheckoutSuccess] Checkout processed successfully!');
+          setProcessingStep('Updating your account...');
           setSuccess(true);
           
-          // Clean up URL parameters immediately
+          // Clean up URL parameters
           window.history.replaceState({}, '', '/checkout-success');
           
           // Refresh user data to get the new subscription
-          console.log('🔄 Refreshing user data...');
+          console.log('🔄 [CheckoutSuccess] Refreshing user data...');
           await refetchUserData();
+          
+          setProcessingStep('Redirecting to dashboard...');
           
           // Redirect to dashboard after showing success message
           setTimeout(() => {
-            console.log('🏠 Redirecting to dashboard...');
+            console.log('🏠 [CheckoutSuccess] Redirecting to dashboard...');
             navigate('/dashboard', { replace: true });
-          }, 3000);
+          }, 2000);
         } else {
           throw new Error(result.error || 'Checkout processing failed');
         }
       } catch (err: any) {
-        console.error('💥 Checkout processing error:', err);
+        console.error('💥 [CheckoutSuccess] Processing error:', err);
         setError(err.message || 'Failed to process checkout');
-      } finally {
         setProcessing(false);
       }
     };
@@ -108,9 +113,16 @@ const CheckoutSuccess: React.FC = () => {
     if (user && searchParams.get('session_id')) {
       processCheckout();
     } else if (!user) {
-      console.log('⏳ Waiting for user authentication...');
+      console.log('⏳ [CheckoutSuccess] Waiting for user authentication...');
+      // Wait a bit for auth to load, then redirect if still no user
+      setTimeout(() => {
+        if (!user) {
+          navigate('/auth', { replace: true });
+        }
+      }, 3000);
     } else {
-      console.log('⏳ Waiting for session ID...');
+      console.log('⏳ [CheckoutSuccess] No session ID found');
+      setError('No checkout session found');
       setProcessing(false);
     }
   }, [searchParams, user, navigate, refetchUserData]);
@@ -128,16 +140,17 @@ const CheckoutSuccess: React.FC = () => {
           </h1>
           
           <p className="text-gray-600 mb-6">
-            {isFreeSubscription 
-              ? "We're activating your free AskStan account with the promo code. This will only take a moment."
-              : "We're setting up your AskStan account and activating your subscription. This will only take a moment."
-            }
+            {processingStep}
           </p>
 
           <div className="space-y-2 text-sm text-gray-500">
             <p>✅ {isFreeSubscription ? 'Promo code applied' : 'Payment confirmed'}</p>
             <p>🔄 Activating subscription...</p>
             <p>📱 Setting up your account</p>
+          </div>
+
+          <div className="mt-6 text-xs text-gray-400">
+            <p>This usually takes 5-10 seconds</p>
           </div>
         </div>
       </div>
@@ -157,7 +170,7 @@ const CheckoutSuccess: React.FC = () => {
           </h1>
           
           <p className="text-gray-600 mb-6">
-            There was an issue processing your subscription. {!isFreeSubscription && "Don't worry - your payment was successful."}
+            There was an issue processing your subscription. {!isFreeSubscription && "Don't worry - your payment was successful and will be processed."}
           </p>
 
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
@@ -166,8 +179,15 @@ const CheckoutSuccess: React.FC = () => {
 
           <div className="space-y-4">
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => window.location.reload()}
               className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-200"
+            >
+              Try Again
+            </button>
+            
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="w-full border border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-semibold hover:bg-gray-50 transition-all duration-200"
             >
               Go to Dashboard
             </button>
@@ -221,10 +241,13 @@ const CheckoutSuccess: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center justify-center">
-          <Loader className="w-5 h-5 animate-spin text-blue-600 mr-2" />
-          <span className="text-blue-600">Redirecting to dashboard...</span>
-        </div>
+        <button
+          onClick={() => navigate('/dashboard', { replace: true })}
+          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transform hover:scale-[1.02] transition-all duration-200 shadow-lg flex items-center justify-center"
+        >
+          Continue to Dashboard
+          <ArrowRight className="w-5 h-5 ml-2" />
+        </button>
       </div>
     </div>
   );
