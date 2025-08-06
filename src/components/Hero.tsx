@@ -47,22 +47,16 @@ const Hero: React.FC = () => {
             </button>
           </div>
 
-          {/* Hero Image Placeholder */}
+          {/* Hero Image - AskStan Banner */}
           <div className="relative max-w-4xl mx-auto">
             <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 p-8">
               <div className="bg-gradient-to-br from-blue-50 to-amber-50 rounded-xl h-64 sm:h-80 flex items-center justify-center relative overflow-hidden">
-                {/* Stan's Photo */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-amber-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center">
-                        <Sparkles className="w-6 h-6 text-blue-600" />
-                      </div>
-                    </div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Meet Stan</h3>
-                    <p className="text-gray-600">Your AI Social Media Growth Coach by Yvexan Agency</p>
-                  </div>
-                </div>
+                {/* AskStan Banner Image */}
+                <img 
+                  src="/src/img/askstanbanner.png" 
+                  alt="AskStan - Your Personal AI Companion" 
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                />
               </div>
             </div>
           </div>
